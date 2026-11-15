@@ -357,12 +357,14 @@ export function DrillingSystemsSection({
               );
             }
           }}
-          className={`flex w-full items-center justify-between gap-2 text-left ${
+          className={`flex w-full items-center justify-between gap-2.5 text-left ${
             isAssisted ? 'p-3.5' : 'p-2.5'
           }`}
         >
-          <div className="flex min-w-0 items-center gap-2.5">
-            <BrandLogo groupId={group.groupId} size={isAssisted ? 'md' : 'sm'} />
+          <div className="flex min-w-0 items-start gap-2.5">
+            <div className="pt-0.5 shrink-0">
+              <BrandLogo groupId={group.groupId} size={isAssisted ? 'md' : 'sm'} />
+            </div>
             <div className="min-w-0 space-y-0.5">
               <div className="flex flex-wrap items-center gap-1.5">
                 <span

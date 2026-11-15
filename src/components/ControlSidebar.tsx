@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import {
   BookmarkCheck,
+  Check,
   ChevronDown,
   ChevronUp,
   Lock,
   RotateCcw,
-  Save,
   Unlock,
 } from 'lucide-react';
 import {
@@ -50,7 +50,7 @@ interface ControlSidebarProps {
   onChangeParams: (patch: Partial<SimulationParams>) => void;
   onResetParam: (key: ResettableParamKey) => void;
   onSetKitAsDefault: (kitId: string) => void;
-  onSaveParamDefault: (kitId: string, key: ResettableParamKey | 'sleeveSeating') => void;
+  onSaveParamDefault: (kitId: string, paramKey: ResettableParamKey | 'sleeveSeating') => void;
   onRestoreKitHistory: (kitId: string, historyId: string) => void;
   onResetKitToFactory: (kitId: string) => void;
   onDeleteKit: (kitId: string) => void;
@@ -84,7 +84,7 @@ function ParamResetButton({
   );
 }
 
-function SaveDefaultIconButton({
+function ParamSaveDefaultButton({
   paramKey,
   label,
   isModified,
@@ -109,12 +109,12 @@ function SaveDefaultIconButton({
         isModified ? 'opacity-100 pointer-events-auto' : 'invisible opacity-0 pointer-events-none'
       }`}
     >
-      <BookmarkCheck className="h-3 w-3" aria-hidden="true" />
+      <Check className="h-3 w-3" aria-hidden="true" />
     </button>
   );
 }
 
-function FactoryPadlockButton({
+function ParamPadlockButton({
   paramKey,
   label,
   unlocked,
@@ -179,17 +179,20 @@ export function ControlSidebar({
   onDeleteKit,
   onResetAll,
 }: ControlSidebarProps) {
-  const [systemsDrawerOpen, setSystemsDrawerOpen] = useState(false);
-  const [implantDrawerOpen, setImplantDrawerOpen] = useState(false);
-  const [visualDrawerOpen, setVisualDrawerOpen] = useState(false);
-  const [factoryDrawerOpen, setFactoryDrawerOpen] = useState(false);
-  const [unlockedFactoryKeys, setUnlockedFactoryKeys] = useState<Record<string, boolean>>({});
+  const [drillingDrawerOpen, setDrillingDrawerOpen] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth >= 1024 : true,
+  );
+  const [implantDrawerOpen, setImplantDrawerOpen] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth >= 1024 : true,
+  );
+  const [anatomyDrawerOpen, setAnatomyDrawerOpen] = useState(false);
+  const [hardwareDrawerOpen, setHardwareDrawerOpen] = useState(false);
+  const [unlockedParams, setUnlockedParams] = useState<Record<string, boolean>>({});
 
   const activeKit = geometry.activeKit;
 
-  // Always reset Category 4 padlocks to locked by default when switching kit
   useEffect(() => {
-    setUnlockedFactoryKeys({});
+    setUnlockedParams({});
   }, [activeKit.id]);
 
   const highlightConfig = getElementHighlightConfig(highlightedElement);
@@ -203,14 +206,14 @@ export function ControlSidebar({
   useEffect(() => {
     if (!highlightConfig) return;
     if (highlightedElement === 'sleeve') {
-      setSystemsDrawerOpen(true);
+      setDrillingDrawerOpen(true);
     }
     if (highlightConfig.openDrawer === 2) {
       setImplantDrawerOpen(true);
     } else if (highlightConfig.openDrawer === 3) {
-      setVisualDrawerOpen(true);
+      setAnatomyDrawerOpen(true);
     } else if (highlightConfig.openDrawer === 4) {
-      setFactoryDrawerOpen(true);
+      setHardwareDrawerOpen(true);
     }
   }, [highlightConfig, highlightedElement]);
 
@@ -222,26 +225,25 @@ export function ControlSidebar({
 
   const isOffsetModified = Math.abs(geometry.offsetCao - def.offsetMm) >= 0.05;
   const isSubcrestalModified = Math.abs(params.subcrestalDepth - defSubcrestal) >= 0.05;
-  const isGuideTubeExtensionModified = params.guideTubeExtension !== defGuideExt;
+  const isGuideExtModified = params.guideTubeExtension !== defGuideExt;
   const isHandpieceModified = Math.abs(params.handpieceHeadHeight - defHandpiece) >= 0.05;
   const isGingivaModified = Math.abs(params.gingivaThickness - defGingiva) >= 0.05;
+  const anyModified = hasAnyModifiedParam(params, geometry, activeKit);
 
-  const hasAnyModified = hasAnyModifiedParam(params, geometry, activeKit);
-
-  const toggleFactoryPadlock = (
-    padlockKey: string,
+  const togglePadlock = (
+    lockKey: string,
     saveKey?: ResettableParamKey | 'sleeveSeating',
   ) => {
-    setUnlockedFactoryKeys((prev) => {
-      const currentlyUnlocked = Boolean(prev[padlockKey]);
-      if (currentlyUnlocked && saveKey) {
+    setUnlockedParams((prev) => {
+      const wasUnlocked = Boolean(prev[lockKey]);
+      if (wasUnlocked && saveKey) {
         onSaveParamDefault(activeKit.id, saveKey);
       }
-      return { ...prev, [padlockKey]: !currentlyUnlocked };
+      return { ...prev, [lockKey]: !wasUnlocked };
     });
   };
 
-  const handleOffsetChange = (val: number) => {
+  const handleOffsetCaoChange = (val: number) => {
     if (geometry.isPilotKit) {
       onChangeParams({
         pilotDrillLength: clamp(roundTo(val + params.implantLength, 1), 12.0, 32.0),
@@ -251,12 +253,13 @@ export function ControlSidebar({
     }
   };
 
-  const handleDrillingLengthChange = (val: number) => {
+  const handleDrillLengthChange = (val: number) => {
     if (geometry.isPilotKit) {
       onChangeParams({ pilotDrillLength: val });
     } else {
-      const newOffset = clamp(roundTo(val - params.implantLength, 1), 4.0, 20.0);
-      onChangeParams({ offsetOverride: newOffset });
+      onChangeParams({
+        offsetOverride: clamp(roundTo(val - params.implantLength, 1), 4.0, 20.0),
+      });
     }
   };
 
@@ -264,9 +267,9 @@ export function ControlSidebar({
     <aside
       aria-label="Paramètres de simulation"
       data-testid="control-sidebar"
-      className="bsp-panel flex flex-col gap-3 rounded-xl border p-3 shadow-xs"
+      className="bsp-panel flex flex-col gap-2.5 rounded-xl border p-2.5 sm:p-3 shadow-xs"
     >
-      {/* Top Sidebar Title: Paramètres + Conditional Réinitialiser & Sauvegarder (invisible & disabled when unmodified) */}
+      {/* Top Panel Title: "Paramètres" */}
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 pb-2">
         <h2 className="text-xs font-extrabold uppercase tracking-wider text-slate-900">
           Paramètres
@@ -276,30 +279,29 @@ export function ControlSidebar({
             type="button"
             data-testid="sidebar-save-all-btn"
             onClick={() => onSetKitAsDefault(activeKit.id)}
-            disabled={!hasAnyModified}
-            aria-hidden={!hasAnyModified}
-            tabIndex={hasAnyModified ? 0 : -1}
-            title="Sauvegarder les réglages modifiés par défaut"
-            className={`inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10.5px] font-semibold text-sky-700 transition-all hover:bg-sky-50 hover:text-sky-900 ${
-              hasAnyModified
+            disabled={!anyModified}
+            aria-hidden={!anyModified}
+            tabIndex={anyModified ? 0 : -1}
+            title="Enregistrer tous les réglages actuels par défaut pour ce système"
+            className={`inline-flex shrink-0 items-center gap-1 rounded bg-sky-600 px-2 py-0.5 text-[10.5px] font-semibold text-white shadow-xs transition-all hover:bg-sky-700 ${
+              anyModified
                 ? 'opacity-100 pointer-events-auto'
                 : 'invisible opacity-0 pointer-events-none'
             }`}
           >
-            <Save className="h-3 w-3" aria-hidden="true" />
+            <BookmarkCheck className="h-3 w-3" aria-hidden="true" />
             Sauvegarder
           </button>
-
           <button
             type="button"
             data-testid="sidebar-reset-all-btn"
             onClick={onResetAll}
-            disabled={!hasAnyModified}
-            aria-hidden={!hasAnyModified}
-            tabIndex={hasAnyModified ? 0 : -1}
+            disabled={!anyModified}
+            aria-hidden={!anyModified}
+            tabIndex={anyModified ? 0 : -1}
             title="Tout réinitialiser aux valeurs par défaut"
             className={`inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10.5px] font-medium text-slate-500 transition-all hover:bg-slate-100 hover:text-slate-900 ${
-              hasAnyModified
+              anyModified
                 ? 'opacity-100 pointer-events-auto'
                 : 'invisible opacity-0 pointer-events-none'
             }`}
@@ -319,25 +321,27 @@ export function ControlSidebar({
       >
         <button
           type="button"
-          onClick={() => setSystemsDrawerOpen((o) => !o)}
-          aria-expanded={systemsDrawerOpen}
+          onClick={() => setDrillingDrawerOpen((o) => !o)}
+          aria-expanded={drillingDrawerOpen}
           data-testid="sidebar-drawer-1-toggle"
           className={`bsp-section-header flex w-full items-center justify-between gap-2 px-3 py-2 text-left transition-colors hover:opacity-95 ${
-            systemsDrawerOpen ? 'rounded-t-lg border-b' : 'rounded-lg'
+            drillingDrawerOpen ? 'rounded-t-lg border-b' : 'rounded-lg'
           }`}
         >
-          <span className="flex items-center gap-1.5 text-xs font-bold min-w-0">
-            {systemsDrawerOpen ? (
+          <span className="flex min-w-0 items-center gap-1.5 text-xs font-bold">
+            {drillingDrawerOpen ? (
               <ChevronUp className="h-3.5 w-3.5 shrink-0 opacity-75" aria-hidden="true" />
             ) : (
               <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-75" aria-hidden="true" />
             )}
             <span className="truncate">1. Systèmes de forage</span>
           </span>
-          <span className="shrink-0 text-[10px] font-medium text-slate-500">Pilotes &amp; guidés</span>
+          <span className="max-w-[132px] shrink-0 truncate rounded border border-slate-300/60 bg-white/70 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
+            {activeKit.systemGroupName ?? activeKit.name}
+          </span>
         </button>
 
-        <SmoothDrawer open={systemsDrawerOpen}>
+        <SmoothDrawer open={drillingDrawerOpen}>
           <div className="p-2">
             <DrillingSystemsSection
               variant="advanced"
@@ -380,7 +384,7 @@ export function ControlSidebar({
             implantDrawerOpen ? 'rounded-t-lg border-b' : 'rounded-lg'
           }`}
         >
-          <span className="flex items-center gap-1.5 text-xs font-bold min-w-0">
+          <span className="flex min-w-0 items-center gap-1.5 text-xs font-bold">
             {implantDrawerOpen ? (
               <ChevronUp className="h-3.5 w-3.5 shrink-0 opacity-75" aria-hidden="true" />
             ) : (
@@ -416,13 +420,13 @@ export function ControlSidebar({
                   : 'border-slate-200 bg-slate-50'
               }`}
             >
-              <span className="text-slate-600 whitespace-nowrap">Foret adapté :</span>
-              <span className="font-mono-tabular font-semibold text-slate-900 whitespace-nowrap">
+              <span className="whitespace-nowrap text-slate-600">Foret adapté :</span>
+              <span className="font-mono-tabular whitespace-nowrap font-semibold text-slate-900">
                 {geometry.drillMarking}
               </span>
             </div>
 
-            {/* Pilot available lengths selector */}
+            {/* Pilot available lengths selector directly after adapted drill */}
             {params.mode === 'kit' && activeKit.kind === 'pilot' && (
               <div className={`mt-2 ${highlightBox('drillUsefulLength')}`}>
                 <div className="mb-1 text-[11px] font-medium text-slate-700">
@@ -450,15 +454,15 @@ export function ControlSidebar({
               </div>
             )}
 
-            {/* Integrated Décalage total & Longueur forage sliders */}
             <div className="mt-2.5 space-y-2 border-t border-slate-200 pt-2.5">
+              {/* Décalage total */}
               <div className={highlightBox('offsetCao')}>
                 <div className="flex items-center justify-between text-[11px]">
                   <label htmlFor="sb-offset-cao" className="font-medium text-slate-700">
                     <BilingualTerm fr="Décalage total" en="Total Offset" />
                   </label>
                   <div className="flex items-center gap-1">
-                    <SaveDefaultIconButton
+                    <ParamSaveDefaultButton
                       paramKey="offsetCao"
                       label="le décalage total"
                       isModified={isOffsetModified}
@@ -481,25 +485,28 @@ export function ControlSidebar({
                   id="sb-offset-cao"
                   data-testid="sb-offset-cao-slider"
                   type="range"
-                  min={4.0}
-                  max={20.0}
+                  min={4}
+                  max={20}
                   step={0.5}
-                  value={clamp(geometry.offsetCao, 4.0, 20.0)}
+                  value={clamp(geometry.offsetCao, 4, 20)}
                   title="Double-cliquer pour réinitialiser par défaut"
-                  onChange={(e) => handleOffsetChange(parseFloat(e.target.value))}
+                  onChange={(e) => handleOffsetCaoChange(parseFloat(e.target.value))}
                   onDoubleClick={() => onResetParam('offsetCao')}
                   className="cad-slider mt-1 w-full"
                 />
-                <p className="mt-0.5 text-[10px] text-slate-500">Col implantaire → Butée du foret</p>
+                <p className="mt-0.5 text-[10px] text-slate-500">
+                  Col implantaire → Butée du foret
+                </p>
               </div>
 
+              {/* Longueur forage */}
               <div className={highlightBox('drillUsefulLength')}>
                 <div className="flex items-center justify-between text-[11px]">
                   <label htmlFor="sb-drilling-length" className="font-medium text-slate-700">
                     Longueur forage
                   </label>
                   <div className="flex items-center gap-1">
-                    <SaveDefaultIconButton
+                    <ParamSaveDefaultButton
                       paramKey="drillUsefulLength"
                       label="la longueur de forage"
                       isModified={isOffsetModified}
@@ -522,25 +529,28 @@ export function ControlSidebar({
                   id="sb-drilling-length"
                   data-testid="sb-drilling-length-slider"
                   type="range"
-                  min={12.0}
-                  max={32.0}
+                  min={12}
+                  max={32}
                   step={0.1}
-                  value={clamp(geometry.drillUsefulLength, 12.0, 32.0)}
+                  value={clamp(geometry.drillUsefulLength, 12, 32)}
                   title="Double-cliquer pour réinitialiser par défaut"
-                  onChange={(e) => handleDrillingLengthChange(parseFloat(e.target.value))}
+                  onChange={(e) => handleDrillLengthChange(parseFloat(e.target.value))}
                   onDoubleClick={() => onResetParam('drillUsefulLength')}
                   className="cad-slider mt-1 w-full"
                 />
-                <p className="mt-0.5 text-[10px] text-slate-500">Sous butée → Pointe du foret</p>
+                <p className="mt-0.5 text-[10px] text-slate-500">
+                  Sous butée → Pointe du foret
+                </p>
               </div>
 
+              {/* Enfouissement sous-crestal */}
               <div className={`border-t border-slate-200 pt-2.5 ${highlightBox('subcrestalDepth')}`}>
                 <div className="flex items-center justify-between text-[11px]">
                   <label htmlFor="sb-subcrestal-depth" className="font-medium text-slate-700">
                     Enfouissement sous-crestal
                   </label>
                   <div className="flex items-center gap-1">
-                    <SaveDefaultIconButton
+                    <ParamSaveDefaultButton
                       paramKey="subcrestalDepth"
                       label="l'enfouissement sous-crestal"
                       isModified={isSubcrestalModified}
@@ -560,8 +570,8 @@ export function ControlSidebar({
                   id="sb-subcrestal-depth"
                   data-testid="sb-subcrestal-slider"
                   type="range"
-                  min={0.0}
-                  max={3.0}
+                  min={0}
+                  max={3}
                   step={0.1}
                   value={params.subcrestalDepth}
                   title="Double-cliquer pour réinitialiser par défaut"
@@ -580,7 +590,7 @@ export function ControlSidebar({
         </SmoothDrawer>
       </div>
 
-      {/* 3. VISUEL (Exactly 3 items: Épaisseur muqueuse, Hauteur tête contre-angle 0–30 mm, Allongement / prolongement du tube) */}
+      {/* 3. TIROIR VISUEL & SITE (Épaisseur muqueuse, Contre-angle, Allongement du tube) */}
       {params.mode === 'kit' && (
         <div
           data-testid="sidebar-drawer-3"
@@ -594,21 +604,21 @@ export function ControlSidebar({
         >
           <button
             type="button"
-            onClick={() => setVisualDrawerOpen((o) => !o)}
-            aria-expanded={visualDrawerOpen}
+            onClick={() => setAnatomyDrawerOpen((o) => !o)}
+            aria-expanded={anatomyDrawerOpen}
             data-testid="sidebar-drawer-3-toggle"
             className={`bsp-section-header flex w-full items-center justify-between gap-2 px-3 py-2 text-left transition-colors hover:opacity-95 ${
-              visualDrawerOpen ? 'rounded-t-lg' : 'rounded-lg'
+              anatomyDrawerOpen ? 'rounded-t-lg' : 'rounded-lg'
             }`}
           >
-            <span className="flex items-center gap-1.5 text-xs font-bold min-w-0">
-              {visualDrawerOpen ? (
+            <span className="flex min-w-0 items-center gap-1.5 text-xs font-bold">
+              {anatomyDrawerOpen ? (
                 <ChevronUp className="h-3.5 w-3.5 shrink-0 opacity-75" aria-hidden="true" />
               ) : (
                 <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-75" aria-hidden="true" />
               )}
-              <span className="truncate" title="Paramètres visuels">
-                3. Visuel
+              <span className="truncate" title="Anatomie & paramètres visuels">
+                3. Anatomie &amp; visuel
               </span>
             </span>
             <span className="font-mono-tabular shrink-0 whitespace-nowrap rounded border border-slate-300/60 bg-white/70 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
@@ -616,16 +626,16 @@ export function ControlSidebar({
             </span>
           </button>
 
-          <SmoothDrawer open={visualDrawerOpen}>
+          <SmoothDrawer open={anatomyDrawerOpen}>
             <div className="space-y-2.5 border-t border-slate-200 p-2.5">
-              {/* Item 1: Épaisseur muqueuse */}
+              {/* Épaisseur muqueuse */}
               <div className={highlightBox('gingivaThickness')}>
                 <div className="flex items-center justify-between text-[11px]">
                   <label htmlFor="sb-gingiva-thickness" className="font-medium text-slate-700">
                     Épaisseur muqueuse
                   </label>
                   <div className="flex items-center gap-1">
-                    <SaveDefaultIconButton
+                    <ParamSaveDefaultButton
                       paramKey="gingivaThickness"
                       label="l'épaisseur muqueuse"
                       isModified={isGingivaModified}
@@ -646,7 +656,7 @@ export function ControlSidebar({
                   data-testid="sb-gingiva-slider"
                   type="range"
                   min={0.5}
-                  max={6.0}
+                  max={6}
                   step={0.1}
                   value={params.gingivaThickness}
                   title="Double-cliquer pour réinitialiser par défaut"
@@ -661,14 +671,14 @@ export function ControlSidebar({
                 </p>
               </div>
 
-              {/* Item 2: Hauteur tête contre-angle (0 mm à 30 mm) */}
+              {/* Hauteur tête contre-angle (0..30 mm) */}
               <div className={highlightBox('handpieceHeadHeight')}>
                 <div className="flex items-center justify-between text-[11px]">
                   <label htmlFor="ca-head-height" className="font-medium text-slate-700">
                     Hauteur tête contre-angle
                   </label>
                   <div className="flex items-center gap-1">
-                    <SaveDefaultIconButton
+                    <ParamSaveDefaultButton
                       paramKey="handpieceHeadHeight"
                       label="la hauteur de tête du contre-angle"
                       isModified={isHandpieceModified}
@@ -688,10 +698,10 @@ export function ControlSidebar({
                   id="ca-head-height"
                   data-testid="sb-handpiece-slider"
                   type="range"
-                  min={0.0}
-                  max={30.0}
+                  min={0}
+                  max={30}
                   step={0.5}
-                  value={clamp(params.handpieceHeadHeight, 0.0, 30.0)}
+                  value={clamp(params.handpieceHeadHeight, 0, 30)}
                   title="Double-cliquer pour réinitialiser par défaut"
                   onChange={(e) =>
                     onChangeParams({ handpieceHeadHeight: parseFloat(e.target.value) })
@@ -699,25 +709,27 @@ export function ControlSidebar({
                   onDoubleClick={() => onResetParam('handpieceHeadHeight')}
                   className="cad-slider mt-1 w-full"
                 />
-                <p className="mt-0.5 text-[10px] text-slate-500">Plage étendue : 0,0 à 30,0 mm</p>
+                <p className="mt-0.5 text-[10px] text-slate-500">
+                  Plage étendue : 0,0 à 30,0 mm
+                </p>
               </div>
 
-              {/* Item 3: Allongement / prolongement du tube */}
+              {/* Allongement / prolongement du tube */}
               <div className={highlightBox('guideTubeExtension')}>
                 <div className="mb-1 flex items-center justify-between text-[11px]">
                   <span className="font-medium text-slate-700">
                     Allongement / prolongement du tube
                   </span>
                   <div className="flex items-center gap-1">
-                    <SaveDefaultIconButton
+                    <ParamSaveDefaultButton
                       paramKey="guideTubeExtension"
                       label="l'allongement du tube"
-                      isModified={isGuideTubeExtensionModified}
+                      isModified={isGuideExtModified}
                       onClick={() => onSaveParamDefault(activeKit.id, 'guideTubeExtension')}
                     />
                     <ParamResetButton
                       label="l'allongement du tube"
-                      isModified={isGuideTubeExtensionModified}
+                      isModified={isGuideExtModified}
                       onClick={() => onResetParam('guideTubeExtension')}
                     />
                   </div>
@@ -765,7 +777,7 @@ export function ControlSidebar({
         </div>
       )}
 
-      {/* 4. PARAMÈTRES D'USINE (No padlock on category title; padlock right of each item title) */}
+      {/* 4. TIROIR PARAMÈTRES D'USINE & GUIDE */}
       {params.mode === 'kit' && (
         <div
           data-testid="sidebar-drawer-4"
@@ -780,15 +792,15 @@ export function ControlSidebar({
         >
           <button
             type="button"
-            onClick={() => setFactoryDrawerOpen((o) => !o)}
-            aria-expanded={factoryDrawerOpen}
+            onClick={() => setHardwareDrawerOpen((o) => !o)}
+            aria-expanded={hardwareDrawerOpen}
             data-testid="sidebar-drawer-4-toggle"
             className={`bsp-section-header flex w-full items-center justify-between gap-1.5 px-2.5 py-2 text-left transition-colors hover:opacity-95 ${
-              factoryDrawerOpen ? 'rounded-t-lg' : 'rounded-lg'
+              hardwareDrawerOpen ? 'rounded-t-lg' : 'rounded-lg'
             }`}
           >
-            <span className="flex items-center gap-1.5 text-[11.5px] font-bold min-w-0">
-              {factoryDrawerOpen ? (
+            <span className="flex min-w-0 items-center gap-1.5 text-[11.5px] font-bold">
+              {hardwareDrawerOpen ? (
                 <ChevronUp className="h-3.5 w-3.5 shrink-0 opacity-75" aria-hidden="true" />
               ) : (
                 <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-75" aria-hidden="true" />
@@ -802,38 +814,41 @@ export function ControlSidebar({
             </span>
           </button>
 
-          <SmoothDrawer open={factoryDrawerOpen}>
+          <SmoothDrawer open={hardwareDrawerOpen}>
             <div className="space-y-2.5 border-t border-slate-200 p-2.5">
-              {/* Item 1: Hauteur de guidage */}
+              {/* Hauteur guidage */}
               {(() => {
-                const unlocked = Boolean(unlockedFactoryKeys['guideHeight']);
-                const isModified = Math.abs(params.guideHeight - def.guidingHeightMm) >= 0.04;
+                const unlocked = Boolean(unlockedParams.guideHeight);
+                const modified = Math.abs(params.guideHeight - def.guidingHeightMm) >= 0.04;
                 return (
                   <div className={highlightBox('guideHeight')}>
                     <div className="flex items-center justify-between gap-1 text-[11px]">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <label htmlFor="sb-guide-height" className="truncate font-medium text-slate-700">
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <label
+                          htmlFor="sb-guide-height"
+                          className="truncate font-medium text-slate-700"
+                        >
                           Hauteur guidage
                         </label>
-                        <FactoryPadlockButton
+                        <ParamPadlockButton
                           paramKey="guideHeight"
                           label="la hauteur de guidage"
                           unlocked={unlocked}
-                          onToggle={() => toggleFactoryPadlock('guideHeight', 'guideHeight')}
+                          onToggle={() => togglePadlock('guideHeight', 'guideHeight')}
                         />
                       </div>
-                      <div className="flex items-center gap-1 shrink-0">
+                      <div className="flex shrink-0 items-center gap-1">
                         <span
                           data-testid="sb-guide-height-value"
                           className={`font-mono-tabular font-semibold ${
-                            params.guideHeight < 3.0 ? 'text-amber-700' : 'text-sky-700'
+                            params.guideHeight < 3 ? 'text-amber-700' : 'text-sky-700'
                           }`}
                         >
                           {params.guideHeight.toFixed(1)} mm
                         </span>
                         <ParamResetButton
                           label="la hauteur de guidage"
-                          isModified={isModified && unlocked}
+                          isModified={modified && unlocked}
                           onClick={() => onResetParam('guideHeight')}
                         />
                       </div>
@@ -843,39 +858,44 @@ export function ControlSidebar({
                       data-testid="sb-guide-height-slider"
                       type="range"
                       min={1.5}
-                      max={8.0}
+                      max={8}
                       step={0.1}
                       disabled={!unlocked}
-                      value={clamp(params.guideHeight, 1.5, 8.0)}
+                      value={clamp(params.guideHeight, 1.5, 8)}
                       title={
                         unlocked
                           ? 'Double-cliquer pour réinitialiser par défaut'
                           : 'Cliquer sur le cadenas pour modifier'
                       }
-                      onChange={(e) => onChangeParams({ guideHeight: parseFloat(e.target.value) })}
+                      onChange={(e) =>
+                        onChangeParams({ guideHeight: parseFloat(e.target.value) })
+                      }
                       onDoubleClick={() => {
                         if (unlocked) onResetParam('guideHeight');
                       }}
                       className="cad-slider mt-1 w-full disabled:cursor-not-allowed disabled:opacity-50"
                     />
-                    <p className="mt-0.5 text-[10px] text-slate-500">Hauteur du puits de guidage</p>
+                    <p className="mt-0.5 text-[10px] text-slate-500">
+                      Hauteur du puits de guidage
+                    </p>
                   </div>
                 );
               })()}
 
               {/* Mastertube quick presets when Biotech Kontact has sleeve active */}
-              {activeKit.id === 'factory-biotech-kontact' && params.hasSleeve && (
+              {activeKit.id === 'factory-biotech-kontact' &&
+                params.hasSleeve &&
                 (() => {
-                  const unlocked = Boolean(unlockedFactoryKeys['mastertubePreset']);
+                  const unlocked = Boolean(unlockedParams.mastertubePreset);
                   return (
                     <div className={highlightBox('offsetCao')}>
                       <div className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-slate-700">
                         <span>Paliers Mastertube Biotech</span>
-                        <FactoryPadlockButton
+                        <ParamPadlockButton
                           paramKey="mastertubePreset"
                           label="les paliers Mastertube"
                           unlocked={unlocked}
-                          onToggle={() => toggleFactoryPadlock('mastertubePreset', 'offsetCao')}
+                          onToggle={() => togglePadlock('mastertubePreset', 'offsetCao')}
                         />
                       </div>
                       <div className="grid grid-cols-3 gap-1">
@@ -901,8 +921,7 @@ export function ControlSidebar({
                       </div>
                     </div>
                   );
-                })()
-              )}
+                })()}
 
               {/* Sleeve seating & measurements when sleeve active */}
               {params.hasSleeve && (
@@ -914,16 +933,16 @@ export function ControlSidebar({
                   }`}
                 >
                   {(() => {
-                    const unlocked = Boolean(unlockedFactoryKeys['sleeveSeating']);
+                    const unlocked = Boolean(unlockedParams.sleeveSeating);
                     return (
                       <div>
                         <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-slate-800">
                           <span>Position de la douille</span>
-                          <FactoryPadlockButton
+                          <ParamPadlockButton
                             paramKey="sleeveSeating"
                             label="la position de la douille"
                             unlocked={unlocked}
-                            onToggle={() => toggleFactoryPadlock('sleeveSeating', 'sleeveSeating')}
+                            onToggle={() => togglePadlock('sleeveSeating', 'sleeveSeating')}
                           />
                         </div>
                         <div className="grid grid-cols-2 gap-1 rounded-md border border-slate-200 bg-slate-200/70 p-0.5">
@@ -959,32 +978,32 @@ export function ControlSidebar({
                   })()}
 
                   {(() => {
-                    const unlocked = Boolean(unlockedFactoryKeys['sleeveLipThickness']);
-                    const isModified =
+                    const unlocked = Boolean(unlockedParams.sleeveLipThickness);
+                    const modified =
                       Math.abs(params.sleeveLipThickness - def.sleeveLipThicknessMm) >= 0.01;
                     return (
                       <div>
                         <div className="flex items-center justify-between gap-1 text-[11px]">
-                          <div className="flex items-center gap-1.5 min-w-0">
+                          <div className="flex min-w-0 items-center gap-1.5">
                             <label htmlFor="sb-sleeve-lip" className="truncate text-slate-600">
                               Collerette douille
                             </label>
-                            <FactoryPadlockButton
+                            <ParamPadlockButton
                               paramKey="sleeveLipThickness"
                               label="la collerette"
                               unlocked={unlocked}
                               onToggle={() =>
-                                toggleFactoryPadlock('sleeveLipThickness', 'sleeveLipThickness')
+                                togglePadlock('sleeveLipThickness', 'sleeveLipThickness')
                               }
                             />
                           </div>
-                          <div className="flex items-center gap-1 shrink-0">
+                          <div className="flex shrink-0 items-center gap-1">
                             <span className="font-mono-tabular font-semibold text-slate-900">
                               {params.sleeveLipThickness.toFixed(2)} mm
                             </span>
                             <ParamResetButton
                               label="la collerette"
-                              isModified={isModified && unlocked}
+                              isModified={modified && unlocked}
                               onClick={() => onResetParam('sleeveLipThickness')}
                             />
                           </div>
@@ -993,7 +1012,7 @@ export function ControlSidebar({
                           id="sb-sleeve-lip"
                           type="range"
                           min={0}
-                          max={2.0}
+                          max={2}
                           step={0.05}
                           disabled={!unlocked}
                           value={params.sleeveLipThickness}
@@ -1007,32 +1026,32 @@ export function ControlSidebar({
                   })()}
 
                   {(() => {
-                    const unlocked = Boolean(unlockedFactoryKeys['sleeveWallThickness']);
-                    const isModified =
+                    const unlocked = Boolean(unlockedParams.sleeveWallThickness);
+                    const modified =
                       Math.abs(params.sleeveWallThickness - def.sleeveWallThicknessMm) >= 0.01;
                     return (
                       <div>
                         <div className="flex items-center justify-between gap-1 text-[11px]">
-                          <div className="flex items-center gap-1.5 min-w-0">
+                          <div className="flex min-w-0 items-center gap-1.5">
                             <label htmlFor="sb-sleeve-wall" className="truncate text-slate-600">
                               Paroi cylindre
                             </label>
-                            <FactoryPadlockButton
+                            <ParamPadlockButton
                               paramKey="sleeveWallThickness"
                               label="l'épaisseur de paroi"
                               unlocked={unlocked}
                               onToggle={() =>
-                                toggleFactoryPadlock('sleeveWallThickness', 'sleeveWallThickness')
+                                togglePadlock('sleeveWallThickness', 'sleeveWallThickness')
                               }
                             />
                           </div>
-                          <div className="flex items-center gap-1 shrink-0">
+                          <div className="flex shrink-0 items-center gap-1">
                             <span className="font-mono-tabular font-semibold text-slate-900">
                               {params.sleeveWallThickness.toFixed(2)} mm
                             </span>
                             <ParamResetButton
                               label="l'épaisseur de paroi"
-                              isModified={isModified && unlocked}
+                              isModified={modified && unlocked}
                               onClick={() => onResetParam('sleeveWallThickness')}
                             />
                           </div>
@@ -1041,7 +1060,7 @@ export function ControlSidebar({
                           id="sb-sleeve-wall"
                           type="range"
                           min={0.15}
-                          max={1.0}
+                          max={1}
                           step={0.05}
                           disabled={!unlocked}
                           value={params.sleeveWallThickness}
@@ -1055,39 +1074,39 @@ export function ControlSidebar({
                   })()}
 
                   {(() => {
-                    const unlocked = Boolean(unlockedFactoryKeys['drillToSleeveClearance']);
-                    const isModified =
+                    const unlocked = Boolean(unlockedParams.drillToSleeveClearance);
+                    const modified =
                       Math.abs(params.drillToSleeveClearance - def.drillToSleeveClearanceMm) >=
                       0.005;
                     return (
                       <div>
                         <div className="flex items-center justify-between gap-1 text-[11px]">
-                          <div className="flex items-center gap-1.5 min-w-0">
+                          <div className="flex min-w-0 items-center gap-1.5">
                             <label
                               htmlFor="sb-drill-sleeve-clear"
                               className="truncate text-slate-600"
                             >
                               Jeu douille / foret
                             </label>
-                            <FactoryPadlockButton
+                            <ParamPadlockButton
                               paramKey="drillToSleeveClearance"
                               label="le jeu douille/foret"
                               unlocked={unlocked}
                               onToggle={() =>
-                                toggleFactoryPadlock(
+                                togglePadlock(
                                   'drillToSleeveClearance',
                                   'drillToSleeveClearance',
                                 )
                               }
                             />
                           </div>
-                          <div className="flex items-center gap-1 shrink-0">
+                          <div className="flex shrink-0 items-center gap-1">
                             <span className="font-mono-tabular font-semibold text-slate-900">
                               {params.drillToSleeveClearance.toFixed(2)} mm
                             </span>
                             <ParamResetButton
                               label="le jeu douille/foret"
-                              isModified={isModified && unlocked}
+                              isModified={modified && unlocked}
                               onClick={() => onResetParam('drillToSleeveClearance')}
                             />
                           </div>
@@ -1101,7 +1120,9 @@ export function ControlSidebar({
                           disabled={!unlocked}
                           value={params.drillToSleeveClearance}
                           onChange={(e) =>
-                            onChangeParams({ drillToSleeveClearance: parseFloat(e.target.value) })
+                            onChangeParams({
+                              drillToSleeveClearance: parseFloat(e.target.value),
+                            })
                           }
                           className="cad-slider mt-1 w-full disabled:cursor-not-allowed disabled:opacity-50"
                         />
@@ -1111,15 +1132,15 @@ export function ControlSidebar({
                 </div>
               )}
 
-              {/* Item 2: Décalage du guide chirurgical */}
+              {/* Surgical guide-to-teeth/gingiva offset */}
               {(() => {
-                const unlocked = Boolean(unlockedFactoryKeys['surgicalGuideOffset']);
-                const isModified =
+                const unlocked = Boolean(unlockedParams.surgicalGuideOffset);
+                const modified =
                   Math.abs(params.surgicalGuideOffset - def.surgicalGuideOffsetMm) >= 0.005;
                 return (
                   <div className={highlightBox('surgicalGuideOffset')}>
                     <div className="flex items-center justify-between gap-1 text-[11px]">
-                      <div className="flex items-center gap-1.5 min-w-0">
+                      <div className="flex min-w-0 items-center gap-1.5">
                         <label
                           htmlFor="sb-surgical-guide-offset"
                           className="truncate font-medium text-slate-700"
@@ -1129,22 +1150,22 @@ export function ControlSidebar({
                             en="Surgical Guide Offset"
                           />
                         </label>
-                        <FactoryPadlockButton
+                        <ParamPadlockButton
                           paramKey="surgicalGuideOffset"
                           label="le décalage du guide chirurgical"
                           unlocked={unlocked}
                           onToggle={() =>
-                            toggleFactoryPadlock('surgicalGuideOffset', 'surgicalGuideOffset')
+                            togglePadlock('surgicalGuideOffset', 'surgicalGuideOffset')
                           }
                         />
                       </div>
-                      <div className="flex items-center gap-1 shrink-0">
+                      <div className="flex shrink-0 items-center gap-1">
                         <span className="font-mono-tabular font-semibold text-slate-900">
                           {params.surgicalGuideOffset.toFixed(2)} mm
                         </span>
                         <ParamResetButton
                           label="le décalage du guide chirurgical"
-                          isModified={isModified && unlocked}
+                          isModified={modified && unlocked}
                           onClick={() => onResetParam('surgicalGuideOffset')}
                         />
                       </div>
@@ -1178,37 +1199,35 @@ export function ControlSidebar({
                 );
               })()}
 
-              {/* Item 3: Jeu d'impression 3D */}
+              {/* 3D printing clearance */}
               {(() => {
-                const unlocked = Boolean(unlockedFactoryKeys['printingClearance']);
-                const isModified =
+                const unlocked = Boolean(unlockedParams.printingClearance);
+                const modified =
                   Math.abs(params.printingClearance - def.printingClearanceMm) >= 0.005;
                 return (
                   <div className={highlightBox('printingClearance')}>
                     <div className="flex items-center justify-between gap-1 text-[11px]">
-                      <div className="flex items-center gap-1.5 min-w-0">
+                      <div className="flex min-w-0 items-center gap-1.5">
                         <label
                           htmlFor="sb-printing-clear"
                           className="truncate font-medium text-slate-700"
                         >
                           Jeu d&apos;impression 3D
                         </label>
-                        <FactoryPadlockButton
+                        <ParamPadlockButton
                           paramKey="printingClearance"
                           label="le jeu d'impression 3D"
                           unlocked={unlocked}
-                          onToggle={() =>
-                            toggleFactoryPadlock('printingClearance', 'printingClearance')
-                          }
+                          onToggle={() => togglePadlock('printingClearance', 'printingClearance')}
                         />
                       </div>
-                      <div className="flex items-center gap-1 shrink-0">
+                      <div className="flex shrink-0 items-center gap-1">
                         <span className="font-mono-tabular font-semibold text-slate-900">
                           {params.printingClearance.toFixed(2)} mm
                         </span>
                         <ParamResetButton
                           label="le jeu d'impression 3D"
-                          isModified={isModified && unlocked}
+                          isModified={modified && unlocked}
                           onClick={() => onResetParam('printingClearance')}
                         />
                       </div>
@@ -1216,7 +1235,7 @@ export function ControlSidebar({
                     <input
                       id="sb-printing-clear"
                       type="range"
-                      min={0.0}
+                      min={0}
                       max={0.4}
                       step={0.01}
                       disabled={!unlocked}

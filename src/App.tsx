@@ -923,7 +923,7 @@ export default function App() {
           </div>
         ) : (
           /* Asymmetric Split Console: Left Control Sidebar + (2D Stage | Autonomous BSP Tube Panel | Telemetry) */
-          <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-[312px_minmax(0,1fr)]">
+          <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-[348px_minmax(0,1fr)]">
             <ControlSidebar
               params={params}
               geometry={geometry}

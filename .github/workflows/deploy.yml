@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -29,13 +29,28 @@ jobs:
           node-version: '22'
 
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: rm -f package-lock.json && npm install --legacy-peer-deps --no-audit --no-fund
 
       - name: Typecheck
         run: npm run lint
 
       - name: Build production bundle
-        run: npm run build
+        run: |
+          npm run build
+          cp dist/index.html dist/404.html
+          touch dist/.nojekyll
+
+      - name: Publish to gh-pages branch (if GitHub Pages uses branch source)
+        uses: peaceiris/actions-gh-pages@v4
+        continue-on-error: true
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          force_orphan: true
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+        continue-on-error: true
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
@@ -52,3 +67,4 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+        continue-on-error: true

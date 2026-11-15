@@ -14,7 +14,7 @@ import {
   groupDrillingKitsBySystem,
   isDentsplySironaKit,
   pickOptimalPilotLength,
-  sortKitsAlphabetically,
+  sortKitsByUsage,
 } from '../utils/implantGeometry';
 import { BrandLogo } from './BrandLogo';
 import { DentsplyDrillVisualStep } from './DentsplyDrillVisualStep';
@@ -53,34 +53,17 @@ export function OnboardingFlow({
   onCompleteToSimulator,
   onLaunchCaliperWizard,
 }: OnboardingFlowProps) {
-  // Step 1: Systèmes de forage (2-phase: 'pick' -> dedicated 'configure' step) | Step 2: Choix de l'implant
   const [step, setStep] = useState<1 | 2>(1);
-  const [step1Phase, setStep1Phase] = useState<'pick' | 'configure'>('pick');
-  const [hasSelectedSystem, setHasSelectedSystem] = useState(false);
+  const [step1Mode, setStep1Mode] = useState<'pick' | 'configure'>('pick');
+  const [assistedSelectionRevealed, setAssistedSelectionRevealed] = useState(false);
 
-  const orderedSystems = sortKitsAlphabetically(kits);
-  const activeSystem = kits.find((k) => k.id === params.activeKitId) ?? orderedSystems[0];
-  const systemGroups = groupDrillingKitsBySystem(kits);
+  const orderedSystems = sortKitsByUsage(kits);
+  const activeSystem =
+    kits.find((k) => k.id === params.activeKitId) ?? orderedSystems[0];
   const activeGroup =
-    systemGroups.find((g) => g.kits.some((k) => k.id === activeSystem?.id)) ?? null;
-
-  const handleAssistedSelectKit = (kitId: string) => {
-    setHasSelectedSystem(true);
-    onSelectKit(kitId);
-  };
-
-  const handleEnterConfigureStep = (kitId: string) => {
-    setHasSelectedSystem(true);
-    onSelectKit(kitId);
-    setStep1Phase('configure');
-  };
-
-  const handleContinueToImplant = () => {
-    if (activeSystem) {
-      onSelectKit(activeSystem.id);
-    }
-    setStep(2);
-  };
+    groupDrillingKitsBySystem(kits).find((g) =>
+      g.kits.some((k) => k.id === activeSystem?.id),
+    ) ?? null;
 
   const handleFinishToSimulator = () => {
     if (activeSystem) {
@@ -106,12 +89,12 @@ export function OnboardingFlow({
       aria-label="Mode assisté étape par étape BlueTube"
       className="mx-auto max-w-4xl space-y-3 pt-1 pb-2"
     >
-      {/* Single-sentence Hero Purpose Strip directly under the BlueTube title banner */}
+      {/* Hero Purpose Banner */}
       <div
         data-testid="onboarding-purpose-banner"
-        className="hero-purpose-card rounded-xl border px-4 py-3 text-center shadow-xs sm:px-5"
+        className="hero-purpose-card rounded-xl border px-3.5 py-2.5 text-center shadow-xs sm:px-5 sm:py-3"
       >
-        <p className="text-sm sm:text-[15.5px] font-medium leading-snug text-slate-700">
+        <p className="text-xs sm:text-[15px] font-medium leading-snug text-slate-700">
           <span className="hero-kw-scale font-bold">
             Simulez votre système de forage implantaire
           </span>{' '}
@@ -123,34 +106,37 @@ export function OnboardingFlow({
         </p>
       </div>
 
-      {/* 2-Step Guided Mode Card ("Mode assisté") */}
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="bsp-section-header border-b px-4 py-3 sm:px-5">
-          <div className="flex items-center justify-between gap-2">
+      {/* Step-by-Step Card */}
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
+        <div className="bsp-section-header border-b px-3.5 py-3 sm:px-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="inline-flex shrink-0 items-center rounded-md border border-emerald-200 bg-emerald-50/70 px-2.5 py-0.5 text-[10.5px] font-bold text-emerald-700">
               Mode assisté
             </span>
             <span className="font-mono-tabular shrink-0 rounded border border-slate-300/70 bg-white/70 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
-              {step === 1 && step1Phase === 'configure'
+              {step === 1 && step1Mode === 'configure'
                 ? 'Étape 1B / 2 — Configuration'
                 : `Étape ${step} / 2`}
             </span>
           </div>
           <h2 className="mt-1.5 text-sm sm:text-[15px] font-bold leading-snug text-slate-900">
             {step === 1
-              ? step1Phase === 'pick'
+              ? step1Mode === 'pick'
                 ? '1. Quel système de forage souhaitez-vous utiliser ?'
                 : `Configuration du système — ${activeSystem?.name ?? ''}`
               : '2. Quel implant souhaitez-vous poser ?'}
           </h2>
         </div>
 
-        {/* STEP 1A: ALPHABETICAL DRILLING SYSTEM PICKER (CLICK-ONLY, NO HOVER REVEAL) */}
-        {step === 1 && step1Phase === 'pick' && activeSystem && (
-          <div className="space-y-3.5 p-4 sm:p-5">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 text-xs">
+        {/* STEP 1A: PICK SYSTEM */}
+        {step === 1 && step1Mode === 'pick' && activeSystem && (
+          <div className="space-y-3.5 p-3.5 sm:p-5">
+            <div className="flex flex-col gap-1 text-xs sm:flex-row sm:items-center sm:justify-between">
               <span className="flex items-center gap-1.5 font-bold text-slate-900">
-                <SlidersHorizontal className="h-3.5 w-3.5 shrink-0 text-sky-600" aria-hidden="true" />
+                <SlidersHorizontal
+                  className="h-3.5 w-3.5 shrink-0 text-sky-600"
+                  aria-hidden="true"
+                />
                 Systèmes de forage (ordre alphabétique)
               </span>
               <span className="text-[11px] text-slate-500">
@@ -163,23 +149,48 @@ export function OnboardingFlow({
               params={params}
               kits={kits}
               activeKit={activeSystem}
-              assistedSelectionRevealed={hasSelectedSystem}
-              onSelectKit={handleAssistedSelectKit}
+              assistedSelectionRevealed={assistedSelectionRevealed}
+              onSelectKit={(kitId) => {
+                setAssistedSelectionRevealed(true);
+                onSelectKit(kitId);
+              }}
               onSelectKitSleeve={onSelectKitSleeve}
               onEditKit={onEditKit}
-              onEnterConfigureStep={handleEnterConfigureStep}
+              onEnterConfigureStep={(kitId) => {
+                setAssistedSelectionRevealed(true);
+                onSelectKit(kitId);
+                setStep1Mode('configure');
+              }}
               onOpenCaliperAssistant={onLaunchCaliperWizard}
             />
+
+            <div className="flex items-center justify-end border-t border-slate-100 pt-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setAssistedSelectionRevealed(true);
+                  onSelectKit(activeSystem.id);
+                  setStep1Mode('configure');
+                }}
+                data-testid="onboarding-next-btn"
+                className="inline-flex w-full sm:w-auto items-center justify-center gap-1.5 rounded-lg bg-sky-600 px-4 py-2.5 sm:py-2 text-xs font-semibold text-white transition-colors hover:bg-sky-700"
+              >
+                <span>Configurer ce système</span>
+                <ArrowRight className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              </button>
+            </div>
           </div>
         )}
 
-        {/* STEP 1B: DEDICATED INTERMEDIATE CONFIGURATION STEP FOR SELECTED SYSTEM */}
-        {step === 1 && step1Phase === 'configure' && activeSystem && (
-          <div data-testid="onb-configure-step" className="space-y-4 p-4 sm:p-5">
-            {/* Selected System Header */}
+        {/* STEP 1B: CONFIGURE SELECTED SYSTEM */}
+        {step === 1 && step1Mode === 'configure' && activeSystem && (
+          <div data-testid="onb-configure-step" className="space-y-4 p-3.5 sm:p-5">
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-sky-200 bg-sky-50/60 p-3">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <BrandLogo groupId={activeGroup?.groupId ?? activeSystem.systemGroupId ?? null} size="md" />
+              <div className="flex min-w-0 items-center gap-2.5">
+                <BrandLogo
+                  groupId={activeGroup?.groupId ?? activeSystem.systemGroupId ?? null}
+                  size="md"
+                />
                 <div className="min-w-0">
                   <div className="truncate text-sm font-bold text-slate-900">
                     {activeSystem.name}
@@ -193,7 +204,7 @@ export function OnboardingFlow({
               </div>
               <button
                 type="button"
-                onClick={() => setStep1Phase('pick')}
+                onClick={() => setStep1Mode('pick')}
                 data-testid="onb-change-system-btn"
                 className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
               >
@@ -202,7 +213,6 @@ export function OnboardingFlow({
               </button>
             </div>
 
-            {/* Option 1: Douille métallique (independent from Narrow/Standard) */}
             <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-3.5">
               <div className="text-xs font-bold text-slate-900">
                 1. Mode de guidage (Avec douille / Sans douille)
@@ -214,19 +224,22 @@ export function OnboardingFlow({
                   data-testid="onb-config-sleeve-off"
                   aria-pressed={!params.hasSleeve}
                   className={`flex items-center justify-between rounded-lg border p-3 text-left transition-colors ${
-                    !params.hasSleeve
-                      ? 'border-sky-600 bg-sky-50/80 text-slate-900'
-                      : 'border-slate-200 bg-white text-slate-700 hover:border-sky-300'
+                    params.hasSleeve
+                      ? 'border-slate-200 bg-white text-slate-700 hover:border-sky-300'
+                      : 'border-sky-600 bg-sky-50/80 text-slate-900'
                   }`}
                 >
                   <div>
                     <div className="text-xs font-bold">Sans douille (résine directe)</div>
                     <div className="text-[10.5px] text-slate-500">
-                      Guidage direct dans le puits imprimé · Jeu 3D {params.printingClearance.toFixed(2)} mm
+                      Guidage direct dans le puits imprimé · Jeu 3D{' '}
+                      {params.printingClearance.toFixed(2)} mm
                     </div>
                   </div>
                   <CheckCircle2
-                    className={`h-4 w-4 shrink-0 ${!params.hasSleeve ? 'text-sky-600' : 'text-slate-200'}`}
+                    className={`h-4 w-4 shrink-0 ${
+                      params.hasSleeve ? 'text-slate-200' : 'text-sky-600'
+                    }`}
                     aria-hidden="true"
                   />
                 </button>
@@ -245,18 +258,21 @@ export function OnboardingFlow({
                   <div>
                     <div className="text-xs font-bold">Avec douille métallique</div>
                     <div className="text-[10.5px] text-slate-500">
-                      Logement douille + Ø guidant {activeSystem.userDefaults.guidingDiameterMm.toFixed(2)} mm
+                      Logement douille + Ø guidant{' '}
+                      {activeSystem.userDefaults.guidingDiameterMm.toFixed(2)} mm
                     </div>
                   </div>
                   <CheckCircle2
-                    className={`h-4 w-4 shrink-0 ${params.hasSleeve ? 'text-sky-600' : 'text-slate-200'}`}
+                    className={`h-4 w-4 shrink-0 ${
+                      params.hasSleeve ? 'text-sky-600' : 'text-slate-200'
+                    }`}
                     aria-hidden="true"
                   />
                 </button>
               </div>
 
               {params.hasSleeve && (
-                <div className="mt-2 grid grid-cols-2 gap-1.5 rounded-lg border border-slate-200 bg-slate-100 p-1">
+                <div className="mt-2 grid grid-cols-1 gap-1.5 rounded-lg border border-slate-200 bg-slate-100 p-1 sm:grid-cols-2">
                   <button
                     type="button"
                     onClick={() => onChangeParams({ sleeveSeating: 'above' })}
@@ -285,7 +301,6 @@ export function OnboardingFlow({
               )}
             </div>
 
-            {/* Option 2: Standard / Narrow variant (independent from Douille) */}
             {activeGroup && activeGroup.kits.length > 1 && (
               <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-3.5">
                 <div className="text-xs font-bold text-slate-900">
@@ -317,7 +332,9 @@ export function OnboardingFlow({
                           </div>
                         </div>
                         <CheckCircle2
-                          className={`h-4 w-4 shrink-0 ${isSubSelected ? 'text-sky-600' : 'text-slate-200'}`}
+                          className={`h-4 w-4 shrink-0 ${
+                            isSubSelected ? 'text-sky-600' : 'text-slate-200'
+                          }`}
                           aria-hidden="true"
                         />
                       </button>
@@ -327,10 +344,8 @@ export function OnboardingFlow({
               </div>
             )}
 
-            {/* Dentsply Sirona Drill Visual Design Step */}
             {isDentsplySironaKit(activeSystem) && <DentsplyDrillVisualStep />}
 
-            {/* Footer Actions */}
             <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3">
               <button
                 type="button"
@@ -344,7 +359,10 @@ export function OnboardingFlow({
 
               <button
                 type="button"
-                onClick={handleContinueToImplant}
+                onClick={() => {
+                  if (activeSystem) onSelectKit(activeSystem.id);
+                  setStep(2);
+                }}
                 data-testid="onb-validate-system-btn"
                 className="inline-flex items-center gap-1.5 rounded-lg bg-sky-600 px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-sky-700"
               >
@@ -355,21 +373,22 @@ export function OnboardingFlow({
           </div>
         )}
 
-        {/* STEP 2: SHARED IMPLANT SELECTION SECTION (STRICT COMPATIBILITY WHEN GUIDED) */}
+        {/* STEP 2: IMPLANT SELECTION */}
         {step === 2 && activeSystem && (
-          <div className="space-y-4 p-4 sm:p-5">
+          <div className="space-y-4 p-3.5 sm:p-5">
             <div className="rounded-lg border border-slate-200 bg-slate-50/70 px-3.5 py-2 text-xs text-slate-700">
               {activeSystem.kind === 'pilot' ? (
                 <span>
-                  <strong className="text-slate-900">Foret pilote sélectionné :</strong> compatible
-                  avec n&apos;importe quel implant de votre bibliothèque.
+                  <strong className="text-slate-900">Foret pilote sélectionné :</strong>{' '}
+                  compatible avec n&apos;importe quel implant de votre bibliothèque.
                 </span>
               ) : (
                 <span>
                   <strong className="text-slate-900">
                     Compatibilité stricte ({activeSystem.name}) :
                   </strong>{' '}
-                  seuls les implants et cotes compatibles avec cette trousse guidée sont affichés —{' '}
+                  seuls les implants et cotes compatibles avec cette trousse guidée sont
+                  affichés —{' '}
                   <span className="font-semibold text-sky-800">
                     {getKitCompatibilityLabel(activeSystem, customImplants)}
                   </span>

@@ -136,7 +136,10 @@ export function SurgicalDiagram2D({
   const yStopTop = yGuideTop - geometry.blueSkyPlan.drillStopThicknessMm * PX_PER_MM;
   const yShankTop = yStopTop - shankHeightPx;
   const yHeadTop = yShankTop - headHeightPx;
-  const minSvgY = Math.min(15, Math.floor(yHeadTop - 42));
+  const minSvgY = clampedHandpieceMm > 18 ? Math.min(60, Math.floor(yHeadTop - 34)) : 60;
+  const viewBoxX = 44;
+  const viewBoxW = 898;
+  const viewBoxH = 722 - minSvgY;
   const isDentsplyVisual = isDentsplySironaKit(geometry.activeKit);
 
   // Deviation cone points
@@ -206,7 +209,7 @@ export function SurgicalDiagram2D({
       y2: yGuideBottom,
       anchorX1: boreLeftX - 4,
       anchorX2: boreLeftX - 4,
-      badgeW: 52,
+      badgeW: 64,
       label: `H ${geometry.guideHeight.toFixed(1)}`,
       titleLabel: 'Hauteur guidage',
       ariaLabel: 'Curseur Hauteur guidage (glisser verticalement)',
@@ -227,12 +230,12 @@ export function SurgicalDiagram2D({
     {
       id: 'offsetCao',
       side: 'left',
-      lineX: 196,
+      lineX: 200,
       y1: yGuideTop,
       y2: yPlatform,
       anchorX1: boreLeftX - 4,
       anchorX2: CX - implantW / 2 - 2,
-      badgeW: 54,
+      badgeW: 68,
       label: `${geometry.offsetCao.toFixed(1)} mm`,
       titleLabel: 'Décalage total',
       ariaLabel: 'Curseur Décalage total (glisser verticalement)',
@@ -252,12 +255,12 @@ export function SurgicalDiagram2D({
     {
       id: 'drillUsefulLength',
       side: 'left',
-      lineX: 114,
+      lineX: 122,
       y1: yGuideTop,
       y2: yDrillTip,
       anchorX1: boreLeftX - 4,
       anchorX2: CX - 2,
-      badgeW: 56,
+      badgeW: 66,
       label: `L ${geometry.drillUsefulLength.toFixed(1)}`,
       titleLabel: 'Longueur forage',
       ariaLabel: 'Curseur Longueur forage (glisser verticalement)',
@@ -278,12 +281,12 @@ export function SurgicalDiagram2D({
     {
       id: 'gingivaThickness',
       side: 'right',
-      lineX: 708,
+      lineX: 706,
       y1: yGingiva,
       y2: yCrest,
       anchorX1: BONE_R,
       anchorX2: BONE_R,
-      badgeW: 54,
+      badgeW: 66,
       label: `${params.gingivaThickness.toFixed(1)} mm`,
       titleLabel: 'Épaisseur muqueuse',
       ariaLabel: 'Curseur Épaisseur muqueuse (glisser verticalement)',
@@ -303,12 +306,12 @@ export function SurgicalDiagram2D({
     {
       id: 'subcrestalDepth',
       side: 'right',
-      lineX: 790,
+      lineX: 782,
       y1: yCrest,
       y2: yPlatform,
       anchorX1: BONE_R,
       anchorX2: CX + implantW / 2 + 2,
-      badgeW: 52,
+      badgeW: 64,
       label: `${params.subcrestalDepth.toFixed(1)} mm`,
       titleLabel: 'Enfouissement sous-crestal',
       ariaLabel: 'Curseur Enfouissement sous-crestal (glisser verticalement)',
@@ -329,12 +332,12 @@ export function SurgicalDiagram2D({
     {
       id: 'implantLength',
       side: 'right',
-      lineX: 868,
+      lineX: 856,
       y1: yPlatform,
       y2: yApex,
       anchorX1: CX + implantW / 2 + 2,
       anchorX2: CX + implantW * 0.3 + 2,
-      badgeW: 54,
+      badgeW: 68,
       label: `${params.implantLength.toFixed(1)} mm`,
       titleLabel: 'Longueur implant',
       ariaLabel: 'Curseur Longueur implant (glisser verticalement)',
@@ -591,10 +594,10 @@ export function SurgicalDiagram2D({
       {/* FULL-BLEED WHITE GRID SCHEMA STAGE (Tube panel extracted below) */}
       <div
         data-testid="surgical-diagram-stage"
-        className="surgical-cad-grid relative h-[340px] w-full overflow-hidden rounded-b-xl sm:h-[470px] lg:h-[520px]"
+        className="surgical-cad-grid relative h-[380px] w-full overflow-hidden rounded-b-xl sm:h-[480px] lg:h-[520px]"
       >
         <svg
-          viewBox={`0 ${minSvgY} ${SVG_WIDTH} ${SVG_HEIGHT - 10 - minSvgY}`}
+          viewBox={`${viewBoxX} ${minSvgY} ${viewBoxW} ${viewBoxH}`}
           preserveAspectRatio="xMidYMid meet"
           className={`block h-full w-full select-none ${
             activeDimDrag ? 'cursor-ns-resize' : 'cursor-default'
@@ -894,20 +897,20 @@ export function SurgicalDiagram2D({
                 strokeDasharray="4 3"
               />
               <rect
-                x={CX - 66}
+                x={CX - 72}
                 y={yConePivot + coneDistToApex + 5}
-                width="132"
-                height="18"
-                rx="4"
+                width="144"
+                height="20"
+                rx="4.5"
                 fill="#FFFBEB"
                 stroke="#FDE68A"
               />
               <text
                 x={CX}
-                y={yConePivot + coneDistToApex + 17}
+                y={yConePivot + coneDistToApex + 18.5}
                 textAnchor="middle"
-                fontSize="10"
-                fontWeight="600"
+                fontSize="11"
+                fontWeight="700"
                 fill="#B45309"
                 fontFamily="JetBrains Mono, monospace"
               >
@@ -1089,7 +1092,7 @@ export function SurgicalDiagram2D({
                           aria-valuemin={0.05}
                           aria-valuemax={0.6}
                           aria-valuenow={params.surgicalGuideOffset}
-                          className="cursor-ns-resize outline-none"
+                          className="touch-none cursor-ns-resize outline-none"
                           onPointerEnter={() => setHoveredDim('surgicalGuideOffset')}
                           onPointerLeave={() =>
                             setHoveredDim((prev) =>
@@ -1120,39 +1123,39 @@ export function SurgicalDiagram2D({
                             Décalage guide chirurgical : {geometry.surgicalGuideOffsetMm.toFixed(2)} mm — Glisser haut/bas pour modifier l&apos;espace guide/dent, double-cliquer pour réinitialiser
                           </title>
                           <line
-                            x1={CX - 134}
-                            y1={yCrest - 136}
-                            x2={CX - 134}
-                            y2={yCrest - 120 - gapPx}
+                            x1={CX + 142}
+                            y1={yCrest - 135}
+                            x2={CX + 142}
+                            y2={yCrest - 118 - gapPx}
                             stroke="#0284C7"
-                            strokeWidth={guideSliderHot ? 2.2 : 1.1}
+                            strokeWidth={guideSliderHot ? 2.2 : 1.2}
                             strokeDasharray="2 2"
                             pointerEvents="none"
                           />
                           <circle
-                            cx={CX - 134}
-                            cy={yCrest - 120 - gapPx}
-                            r={guideSliderHot ? 3 : 2}
+                            cx={CX + 142}
+                            cy={yCrest - 118 - gapPx}
+                            r={guideSliderHot ? 3 : 2.2}
                             fill="#0284C7"
                             pointerEvents="none"
                           />
                           <rect
                             data-testid="svg-dim-badge-surgicalGuideOffset"
-                            x={CX - 172}
-                            y={yCrest - 151.5}
-                            width="76"
-                            height="16"
-                            rx="3.5"
+                            x={CX + 96}
+                            y={yCrest - 154}
+                            width="92"
+                            height="19"
+                            rx="4"
                             fill={activeDimDrag?.id === 'surgicalGuideOffset' ? '#FFFFFF' : '#F0F9FF'}
                             stroke={guideSliderHot ? '#0284C7' : '#BAE6FD'}
-                            strokeWidth={guideSliderHot ? 2 : 1}
+                            strokeWidth={guideSliderHot ? 2 : 1.1}
                             pointerEvents="none"
                           />
                           <text
-                            x={CX - 134}
-                            y={yCrest - 140.5}
+                            x={CX + 142}
+                            y={yCrest - 141.5}
                             textAnchor="middle"
-                            fontSize="8"
+                            fontSize="9.5"
                             fontWeight="700"
                             fill="#0369A1"
                             fontFamily="JetBrains Mono, monospace"
@@ -1163,19 +1166,19 @@ export function SurgicalDiagram2D({
                           {guideSliderHot && (
                             <g fill="#0284C7" opacity="0.95" pointerEvents="none">
                               <polygon
-                                points={`${CX - 137},${yCrest - 153.5} ${CX - 131},${yCrest - 153.5} ${CX - 134},${yCrest - 157}`}
+                                points={`${CX + 139},${yCrest - 156} ${CX + 145},${yCrest - 156} ${CX + 142},${yCrest - 160}`}
                               />
                               <polygon
-                                points={`${CX - 137},${yCrest - 133.5} ${CX - 131},${yCrest - 133.5} ${CX - 134},${yCrest - 130}`}
+                                points={`${CX + 139},${yCrest - 132.5} ${CX + 145},${yCrest - 132.5} ${CX + 142},${yCrest - 128.5}`}
                               />
                             </g>
                           )}
                           <rect
                             data-testid="svg-dim-badge-hit-surgicalGuideOffset"
-                            x={CX - 176}
-                            y={yCrest - 156}
-                            width="84"
-                            height="25"
+                            x={CX + 92}
+                            y={yCrest - 159}
+                            width="100"
+                            height="28"
                             fill="transparent"
                           />
                         </g>
@@ -1207,19 +1210,19 @@ export function SurgicalDiagram2D({
                       <title>Cliquer pour basculer entre prolongement gencive et os</title>
                       <rect
                         x={tubeOuterR + 4}
-                        y={Math.min(yGingiva - 22, (isBoneExt ? boneCollarBottom : safeSkirtBottom) - 18)}
-                        width={isBoneExt ? 42 : 56}
-                        height="15"
-                        rx="3.5"
+                        y={Math.min(yGingiva - 24, (isBoneExt ? boneCollarBottom : safeSkirtBottom) - 20)}
+                        width={isBoneExt ? 48 : 66}
+                        height="18"
+                        rx="4"
                         fill="#F0F9FF"
                         stroke="#7DD3FC"
-                        strokeWidth="1.1"
+                        strokeWidth="1.2"
                       />
                       <text
-                        x={tubeOuterR + 4 + (isBoneExt ? 21 : 28)}
-                        y={Math.min(yGingiva - 11.5, (isBoneExt ? boneCollarBottom : safeSkirtBottom) - 7.5)}
+                        x={tubeOuterR + 4 + (isBoneExt ? 24 : 33)}
+                        y={Math.min(yGingiva - 12, (isBoneExt ? boneCollarBottom : safeSkirtBottom) - 8)}
                         textAnchor="middle"
-                        fontSize="7.5"
+                        fontSize="9"
                         fontWeight="700"
                         fill="#0369A1"
                         fontFamily="JetBrains Mono, monospace"
@@ -1822,7 +1825,7 @@ export function SurgicalDiagram2D({
                 aria-valuemin={0.0}
                 aria-valuemax={30.0}
                 aria-valuenow={clampedHandpieceMm}
-                className={`svg-clickable-element cursor-ns-resize outline-none ${
+                className={`svg-clickable-element touch-none cursor-ns-resize outline-none ${
                   highlightedElement === 'handpiece' ? 'svg-element-selected' : ''
                 }`}
                 onPointerEnter={() => setHoveredDim('handpieceHeadHeight')}
@@ -1934,10 +1937,10 @@ export function SurgicalDiagram2D({
                 <g data-testid="svg-dim-handpieceHeadHeight" data-hot={hpHot ? 'true' : 'false'}>
                   <rect
                     x={CX + 42}
-                    y={hpLabelY - 12}
-                    width="172"
-                    height="17"
-                    rx="3.5"
+                    y={hpLabelY - 13}
+                    width="184"
+                    height="19"
+                    rx="4"
                     fill={hpHot ? '#F0F9FF' : 'transparent'}
                     stroke={hpHot ? '#0284C7' : 'transparent'}
                     strokeWidth="1.2"
@@ -1946,8 +1949,8 @@ export function SurgicalDiagram2D({
                   <text
                     x={CX + 46}
                     y={hpLabelY}
-                    fontSize="10.5"
-                    fontWeight="600"
+                    fontSize="11.5"
+                    fontWeight="700"
                     fill={hpHot ? '#0369A1' : '#334155'}
                     pointerEvents="none"
                   >
@@ -1985,12 +1988,12 @@ export function SurgicalDiagram2D({
                 const minY = Math.min(spec.y1, spec.y2);
                 const maxY = Math.max(spec.y1, spec.y2);
                 const midY = (spec.y1 + spec.y2) / 2;
-                const badgeH = 21;
+                const badgeH = 24;
                 const badgeY = midY - badgeH / 2;
                 const badgeX =
                   spec.side === 'left'
-                    ? spec.lineX - 7 - spec.badgeW
-                    : spec.lineX + 7;
+                    ? spec.lineX - 6 - spec.badgeW
+                    : spec.lineX + 6;
                 const badgeCenterX = badgeX + spec.badgeW / 2;
                 const tickHalf = isHot ? 7 : 5;
 
@@ -2005,7 +2008,7 @@ export function SurgicalDiagram2D({
                     aria-valuemin={spec.min}
                     aria-valuemax={spec.max}
                     aria-valuenow={spec.value}
-                    className="cursor-ns-resize outline-none"
+                    className="touch-none cursor-ns-resize outline-none"
                     onPointerEnter={() => setHoveredDim(spec.id)}
                     onPointerLeave={() =>
                       setHoveredDim((prev) => (prev === spec.id ? null : prev))
@@ -2039,7 +2042,7 @@ export function SurgicalDiagram2D({
                       stroke={spec.color}
                       strokeWidth={isHot ? 1.6 : 0.9}
                       strokeDasharray="3 3"
-                      opacity={isHot ? 0.85 : 0.32}
+                      opacity={isHot ? 0.85 : 0.35}
                       pointerEvents="none"
                     />
                     <line
@@ -2050,7 +2053,7 @@ export function SurgicalDiagram2D({
                       stroke={spec.color}
                       strokeWidth={isHot ? 1.6 : 0.9}
                       strokeDasharray="3 3"
-                      opacity={isHot ? 0.85 : 0.32}
+                      opacity={isHot ? 0.85 : 0.35}
                       pointerEvents="none"
                     />
 
@@ -2062,7 +2065,7 @@ export function SurgicalDiagram2D({
                       x2={spec.lineX}
                       y2={spec.y2}
                       stroke={spec.color}
-                      strokeWidth={isHot ? 3.2 : 1.6}
+                      strokeWidth={isHot ? 3.2 : 1.7}
                       strokeLinecap="round"
                       pointerEvents="none"
                     />
@@ -2072,7 +2075,7 @@ export function SurgicalDiagram2D({
                       x2={spec.lineX + tickHalf}
                       y2={spec.y1}
                       stroke={spec.color}
-                      strokeWidth={isHot ? 3.0 : 1.6}
+                      strokeWidth={isHot ? 3.0 : 1.7}
                       strokeLinecap="round"
                       pointerEvents="none"
                     />
@@ -2082,7 +2085,7 @@ export function SurgicalDiagram2D({
                       x2={spec.lineX + tickHalf}
                       y2={spec.y2}
                       stroke={spec.color}
-                      strokeWidth={isHot ? 3.0 : 1.6}
+                      strokeWidth={isHot ? 3.0 : 1.7}
                       strokeLinecap="round"
                       pointerEvents="none"
                     />
@@ -2110,18 +2113,18 @@ export function SurgicalDiagram2D({
                       y={badgeY}
                       width={spec.badgeW}
                       height={badgeH}
-                      rx="4.5"
+                      rx="5"
                       fill={isDragging ? '#FFFFFF' : spec.badgeFill}
                       stroke={isHot ? spec.color : spec.badgeStroke}
-                      strokeWidth={isHot ? 2.3 : 1.1}
+                      strokeWidth={isHot ? 2.3 : 1.2}
                       pointerEvents="none"
                     />
 
                     <text
                       x={badgeCenterX}
-                      y={midY + 3.5}
+                      y={midY + 4}
                       textAnchor="middle"
-                      fontSize={isHot ? '10' : '9.5'}
+                      fontSize={isHot ? '12' : '11.5'}
                       fontWeight="700"
                       fill={spec.textColor}
                       fontFamily="JetBrains Mono, monospace"
@@ -2134,10 +2137,10 @@ export function SurgicalDiagram2D({
                     {isHot && (
                       <g fill={spec.color} opacity="0.9" pointerEvents="none">
                         <polygon
-                          points={`${badgeCenterX - 3},${badgeY - 2.5} ${badgeCenterX + 3},${badgeY - 2.5} ${badgeCenterX},${badgeY - 6.5}`}
+                          points={`${badgeCenterX - 3.5},${badgeY - 2.5} ${badgeCenterX + 3.5},${badgeY - 2.5} ${badgeCenterX},${badgeY - 7}`}
                         />
                         <polygon
-                          points={`${badgeCenterX - 3},${badgeY + badgeH + 2.5} ${badgeCenterX + 3},${badgeY + badgeH + 2.5} ${badgeCenterX},${badgeY + badgeH + 6.5}`}
+                          points={`${badgeCenterX - 3.5},${badgeY + badgeH + 2.5} ${badgeCenterX + 3.5},${badgeY + badgeH + 2.5} ${badgeCenterX},${badgeY + badgeH + 7}`}
                         />
                       </g>
                     )}
@@ -2145,20 +2148,20 @@ export function SurgicalDiagram2D({
                     {/* Invisible generous pointer hit target on physical dimension line */}
                     <rect
                       data-testid={`svg-dim-line-hit-${spec.id}`}
-                      x={spec.lineX - 11}
-                      y={minY - 8}
-                      width="22"
-                      height={Math.max(20, maxY - minY + 16)}
+                      x={spec.lineX - 13}
+                      y={minY - 10}
+                      width="26"
+                      height={Math.max(24, maxY - minY + 20)}
                       fill="transparent"
                     />
 
                     {/* Invisible generous pointer hit target on external numeric pill */}
                     <rect
                       data-testid={`svg-dim-badge-hit-${spec.id}`}
-                      x={badgeX - 4}
-                      y={badgeY - 4}
-                      width={spec.badgeW + 8}
-                      height={badgeH + 8}
+                      x={badgeX - 5}
+                      y={badgeY - 5}
+                      width={spec.badgeW + 10}
+                      height={badgeH + 10}
                       fill="transparent"
                     />
                   </g>

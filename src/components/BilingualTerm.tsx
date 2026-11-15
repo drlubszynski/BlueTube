@@ -35,7 +35,7 @@ export function BilingualTerm({
   }, [showEn]);
 
   return (
-    <span ref={containerRef} className={`relative inline-block ${className}`}>
+    <span ref={containerRef} className={`relative inline-block max-w-full ${className}`}>
       <button
         type="button"
         onClick={(e) => {
@@ -44,7 +44,7 @@ export function BilingualTerm({
         }}
         title={`Cliquer pour afficher le terme anglais : ${en}`}
         aria-expanded={showEn}
-        className={`cursor-pointer border-b border-dotted text-left font-inherit transition-colors focus-visible:outline-2 focus-visible:outline-sky-500 ${
+        className={`max-w-full whitespace-normal cursor-pointer border-b border-dotted text-left font-inherit transition-colors focus-visible:outline-2 focus-visible:outline-sky-500 ${
           tone === 'dark'
             ? 'border-slate-400/70 hover:border-sky-300 hover:text-sky-200'
             : 'border-slate-400 hover:border-sky-600 hover:text-sky-800'
@@ -55,7 +55,7 @@ export function BilingualTerm({
       {showEn && (
         <span
           role="tooltip"
-          className="font-mono-tabular pointer-events-none absolute left-0 top-full z-40 mt-1 whitespace-nowrap rounded border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-900 shadow-sm"
+          className="font-mono-tabular pointer-events-none absolute left-0 top-full z-40 mt-1 max-w-[calc(100vw-2rem)] whitespace-normal rounded border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-900 shadow-sm"
         >
           EN : {en}
         </span>

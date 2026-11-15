@@ -396,7 +396,7 @@ test('getElementHighlightConfig maps clickable 2D elements to correct drawers an
   assert.deepEqual(implantCfg?.params, ['implantDiameter', 'implantLength']);
 
   const gingivaCfg = getElementHighlightConfig('gingiva');
-  assert.equal(gingivaCfg?.openDrawer, 4);
+  assert.equal(gingivaCfg?.openDrawer, 3);
   assert.deepEqual(gingivaCfg?.params, ['gingivaThickness']);
 
   const subcrestalCfg = getElementHighlightConfig('subcrestal');
@@ -404,14 +404,14 @@ test('getElementHighlightConfig maps clickable 2D elements to correct drawers an
   assert.deepEqual(subcrestalCfg?.params, ['subcrestalDepth']);
 
   const guideCfg = getElementHighlightConfig('surgical_guide');
-  assert.equal(guideCfg?.openDrawer, 3);
+  assert.equal(guideCfg?.openDrawer, 4);
   assert.ok(guideCfg?.params.includes('surgicalGuideOffset'));
   assert.ok(guideCfg?.params.includes('guideTubeExtension'));
   assert.ok(guideCfg?.params.includes('printingClearance'));
   assert.ok(guideCfg?.params.includes('bspPanel'));
 
   const sleeveCfg = getElementHighlightConfig('sleeve');
-  assert.equal(sleeveCfg?.openDrawer, 3);
+  assert.equal(sleeveCfg?.openDrawer, 4);
   assert.ok(sleeveCfg?.params.includes('sleeve'));
 
   const drillCfg = getElementHighlightConfig('drill');
@@ -420,7 +420,7 @@ test('getElementHighlightConfig maps clickable 2D elements to correct drawers an
   assert.ok(drillCfg?.params.includes('drillUsefulLength'));
 
   const handpieceCfg = getElementHighlightConfig('handpiece');
-  assert.equal(handpieceCfg?.openDrawer, 4);
+  assert.equal(handpieceCfg?.openDrawer, 3);
   assert.deepEqual(handpieceCfg?.params, ['handpieceHeadHeight']);
 });
 
@@ -563,7 +563,7 @@ test('All factory systems default to Sans douille and MIS MGUIDE Standard & Narr
   assert.equal(misStd.factoryDefaults.sleeveWallThicknessMm, 0.5);
   assert.deepEqual(misStd.factoryDefaults.availableLengthsMm, [6.0, 8.0, 10.0, 11.5, 13.0, 16.0]);
   assert.deepEqual(misStd.factoryDefaults.drillDiametersMm, [2.4, 3.2, 3.6, 4.1, 4.9]);
-  assert.deepEqual(misStd.factoryDefaults.implantDiametersMm, [3.3, 3.8, 4.2, 5.0]);
+  assert.deepEqual(misStd.factoryDefaults.implantDiametersMm, [3.3, 3.75, 4.2, 5.0]);
   assert.deepEqual(misStd.factoryDefaults.implantLengthsMm, [6.0, 8.0, 10.0, 11.5, 13.0, 16.0]);
 
   const misStdTubelessDefault = computeImplantGeometry(
@@ -622,8 +622,8 @@ test('All factory systems default to Sans douille and MIS MGUIDE Standard & Narr
   // Narrow MIS sub-system: 4.10 mm tubeless by default, 5.10 mm with sleeve, H 5.0, offset 9.5, flush
   assert.equal(misNarrow.factoryDefaults.sleeveSeating, 'flush');
   assert.equal(misNarrow.factoryDefaults.sleeveWallThicknessMm, 0.5);
-  assert.deepEqual(misNarrow.factoryDefaults.implantDiametersMm, [3.3]);
-  assert.deepEqual(misNarrow.factoryDefaults.drillDiametersMm, [2.4, 2.8, 3.2]);
+  assert.deepEqual(misNarrow.factoryDefaults.implantDiametersMm, [3.3, 3.75]);
+  assert.deepEqual(misNarrow.factoryDefaults.drillDiametersMm, [2.4, 3.2, 3.6]);
 
   const narrowTubelessDefault = computeImplantGeometry(
     {
@@ -764,6 +764,144 @@ test('resolveDrillingSystemsLayout shows 3 alphabetical groups by default and re
   ]);
   assert.deepEqual(unarchived.libraryGroupIds, ['biotech-kontact']);
 });
+
+test('Narrow vs Standard guiding diameter and Avec/Sans douille toggle independently', async () => {
+  const {
+    buildKitSelectionParamsPatch,
+    buildSleeveToggleParamsPatch,
+  } = await import('./implantGeometry');
+  const misStd = FACTORY_DRILLING_KITS.find((k) => k.id === 'factory-mis-mguide')!;
+  const misNarrow = FACTORY_DRILLING_KITS.find((k) => k.id === 'factory-mis-mguide-narrow')!;
+
+  // Start on Narrow, Sans douille
+  let params = {
+    ...DEFAULT_SIMULATION_PARAMS,
+    ...buildKitSelectionParamsPatch(DEFAULT_SIMULATION_PARAMS, misNarrow),
+  };
+  assert.equal(params.activeKitId, 'factory-mis-mguide-narrow');
+  assert.equal(params.hasSleeve, false);
+
+  // Enable Douille on Narrow -> hasSleeve becomes true, activeKitId stays Narrow
+  const sleeveOn = buildSleeveToggleParamsPatch(params, misNarrow, true);
+  params = { ...params, ...sleeveOn.paramsPatch };
+  assert.equal(params.activeKitId, 'factory-mis-mguide-narrow');
+  assert.equal(params.hasSleeve, true);
+
+  // Switch from Narrow to Standard -> hasSleeve MUST stay true (no accidental reset!)
+  const toStd = buildKitSelectionParamsPatch(params, misStd, misNarrow);
+  params = { ...params, ...toStd };
+  assert.equal(params.activeKitId, 'factory-mis-mguide');
+  assert.equal(params.hasSleeve, true);
+  assert.equal(params.guidingDiameter, 5.45);
+
+  // Turn OFF Douille on Standard, then switch back to Narrow -> hasSleeve stays false
+  const sleeveOff = buildSleeveToggleParamsPatch(params, misStd, false);
+  params = { ...params, ...sleeveOff.paramsPatch };
+  assert.equal(params.hasSleeve, false);
+
+  const backToNarrow = buildKitSelectionParamsPatch(params, misNarrow, misStd);
+  params = { ...params, ...backToNarrow };
+  assert.equal(params.activeKitId, 'factory-mis-mguide-narrow');
+  assert.equal(params.hasSleeve, false);
+  assert.equal(params.guidingDiameter, 3.95);
+});
+
+test('Handpiece head height supports full 0–30 mm range and strict compatibility filters guided implants', async () => {
+  const { getCompatibleImplantsForKit, groupLibraryByBrand, hasAnyModifiedParam } = await import(
+    './implantGeometry'
+  );
+
+  const zeroHp = computeImplantGeometry(
+    { ...DEFAULT_SIMULATION_PARAMS, handpieceHeadHeight: 0 },
+    FACTORY_DRILLING_KITS,
+  );
+  assert.equal(zeroHp.minMouthOpeningMm, zeroHp.drillUsefulLength);
+
+  const thirtyHp = computeImplantGeometry(
+    { ...DEFAULT_SIMULATION_PARAMS, handpieceHeadHeight: 30 },
+    FACTORY_DRILLING_KITS,
+  );
+  assert.equal(thirtyHp.minMouthOpeningMm, thirtyHp.drillUsefulLength + 30);
+
+  const misNarrow = FACTORY_DRILLING_KITS.find((k) => k.id === 'factory-mis-mguide-narrow')!;
+  const compatNarrow = getCompatibleImplantsForKit(misNarrow, FACTORY_IMPLANT_MODELS);
+  assert.equal(compatNarrow.length, 1);
+  assert.equal(compatNarrow[0].id, 'factory-implant-mis-mguide');
+  assert.deepEqual(compatNarrow[0].diametersMm, [3.3, 3.75]);
+
+  const brands = groupLibraryByBrand(FACTORY_DRILLING_KITS, FACTORY_IMPLANT_MODELS);
+  assert.deepEqual(
+    brands.map((b) => b.brandName),
+    ['Biotech Dental', 'Global D', 'MIS (Dentsply Sirona)'],
+  );
+
+  const biotechKit = FACTORY_DRILLING_KITS[0];
+  const unmodifiedGeom = computeImplantGeometry(DEFAULT_SIMULATION_PARAMS, FACTORY_DRILLING_KITS);
+  assert.equal(hasAnyModifiedParam(DEFAULT_SIMULATION_PARAMS, unmodifiedGeom, biotechKit), false);
+
+  const modifiedParams = { ...DEFAULT_SIMULATION_PARAMS, gingivaThickness: 3.5 };
+  const modifiedGeom = computeImplantGeometry(modifiedParams, FACTORY_DRILLING_KITS);
+  assert.equal(hasAnyModifiedParam(modifiedParams, modifiedGeom, biotechKit), true);
+});
+
+test('MIS MGUIDE official catalog mapping & Dentsply ring colors match Ø3.3 Yellow, Ø3.75 Red, Ø4.2 Blue, Ø5.0 Green, and Ø2.4 no-ring steel', async () => {
+  const { DENTSPLY_MIS_DRILL_COLORS, formatMetricMm } = await import('./implantGeometry');
+
+  assert.equal(formatMetricMm(3.75), '3.75');
+  assert.equal(formatMetricMm(3.3), '3.3');
+  assert.equal(formatMetricMm(5.0), '5.0');
+
+  const pilotSpec = DENTSPLY_MIS_DRILL_COLORS.find((c) => c.diameterMm === 2.4);
+  assert.equal(pilotSpec?.ringColorHex, null);
+
+  const cases: Array<{ kitId: string; impDia: number; expectedDrill: number; expectedColor: string; expectedMarking: string }> = [
+    { kitId: 'factory-mis-mguide-narrow', impDia: 3.3, expectedDrill: 3.2, expectedColor: '#EAB308', expectedMarking: 'Ø3.2 · 10 mm' },
+    { kitId: 'factory-mis-mguide-narrow', impDia: 3.75, expectedDrill: 3.6, expectedColor: '#DC2626', expectedMarking: 'Ø3.6 · 10 mm' },
+    { kitId: 'factory-mis-mguide', impDia: 3.3, expectedDrill: 3.2, expectedColor: '#EAB308', expectedMarking: 'Ø3.2 · 10 mm' },
+    { kitId: 'factory-mis-mguide', impDia: 3.75, expectedDrill: 3.6, expectedColor: '#DC2626', expectedMarking: 'Ø3.6 · 10 mm' },
+    { kitId: 'factory-mis-mguide', impDia: 4.2, expectedDrill: 4.1, expectedColor: '#1D4ED8', expectedMarking: 'Ø4.1 · 10 mm' },
+    { kitId: 'factory-mis-mguide', impDia: 5.0, expectedDrill: 4.9, expectedColor: '#15803D', expectedMarking: 'Ø4.9 · 10 mm' },
+  ];
+
+  for (const c of cases) {
+    const kit = FACTORY_DRILLING_KITS.find((k) => k.id === c.kitId)!;
+    const geom = computeImplantGeometry(
+      {
+        ...DEFAULT_SIMULATION_PARAMS,
+        activeKitId: kit.id,
+        implantBrand: 'mis',
+        customImplantId: 'factory-implant-mis-mguide',
+        implantDiameter: c.impDia,
+        implantLength: 10.0,
+        hasSleeve: kit.factoryDefaults.hasSleeve,
+        sleeveSeating: kit.factoryDefaults.sleeveSeating,
+        sleeveLipThickness: kit.factoryDefaults.sleeveLipThicknessMm,
+        sleeveWallThickness: kit.factoryDefaults.sleeveWallThicknessMm,
+        drillToSleeveClearance: kit.factoryDefaults.drillToSleeveClearanceMm,
+        printingClearance: kit.factoryDefaults.printingClearanceMm,
+        guidingDiameter: kit.factoryDefaults.guidingDiameterMm,
+        guideHeight: kit.factoryDefaults.guidingHeightMm,
+        offsetOverride: kit.factoryDefaults.offsetMm,
+      },
+      FACTORY_DRILLING_KITS,
+    );
+    assert.equal(geom.drillActiveDiameter, c.expectedDrill);
+    assert.equal(geom.drillRingColorHex, c.expectedColor);
+    assert.equal(geom.drillMarking, c.expectedMarking);
+    assert.equal(geom.blueSkyPlan.guideOffsetMm, 9.5);
+  }
+});
+
+test('Biotech Dental AtlaSurgery 2 drill color codes match KATLAFE catalog (Ø2.0 steel no-ring, Ø3.0 Yellow, Ø3.6 Magenta, Ø4.2 Blue, Ø4.8 Green)', async () => {
+  const { BIOTECH_DRILL_SPECS } = await import('./implantGeometry');
+  const byDia = Object.fromEntries(BIOTECH_DRILL_SPECS.map((s) => [s.diameter, s.ringColorHex]));
+  assert.equal(byDia[2.0], null);
+  assert.equal(byDia[3.0], '#EAB308');
+  assert.equal(byDia[3.6], '#D946EF');
+  assert.equal(byDia[4.2], '#2563EB');
+  assert.equal(byDia[4.8], '#16A34A');
+});
+
 
 
 

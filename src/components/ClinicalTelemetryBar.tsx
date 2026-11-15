@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { AlertTriangle, CheckCircle2, ChevronDown, Lightbulb, XCircle } from 'lucide-react';
 import { ComputedGeometry, SimulationParams } from '../utils/implantGeometry';
 import { BilingualTerm } from './BilingualTerm';
+import { SmoothDrawer } from './SmoothDrawer';
 
 interface ClinicalTelemetryBarProps {
   geometry: ComputedGeometry;
@@ -83,8 +84,8 @@ export function ClinicalTelemetryBar({
         </div>
       </button>
 
-      {isOpen && (
-        <div id="clinical-telemetry-content" className="border-t border-slate-200 p-3.5 space-y-2.5">
+      <SmoothDrawer open={isOpen} id="clinical-telemetry-content">
+        <div className="border-t border-slate-200 p-3.5 space-y-2.5">
           {/* Compact Status summary */}
           <div
             className={`flex items-center gap-2.5 rounded-lg border px-3 py-2 ${statusConfig.container}`}
@@ -118,7 +119,7 @@ export function ClinicalTelemetryBar({
 
             <div className="flex min-h-[76px] flex-col justify-between rounded-lg border border-slate-200 bg-slate-50/70 px-2.5 py-2">
               <div className="truncate text-[10.5px] font-semibold text-slate-500">
-                <BilingualTerm fr="Profondeur" en="Drilling Depth" />
+                Profondeur
               </div>
               <div className="flex items-baseline gap-1">
                 <span
@@ -162,7 +163,7 @@ export function ClinicalTelemetryBar({
 
             <div className="flex min-h-[76px] flex-col justify-between rounded-lg border border-slate-200 bg-slate-50/70 px-2.5 py-2">
               <div className="truncate text-[10.5px] font-semibold text-slate-500">
-                <BilingualTerm fr="Déviation apex" en="Max Apical Deviation" />
+                Déviation apex
               </div>
               <div className="flex items-baseline gap-1">
                 <span
@@ -183,7 +184,7 @@ export function ClinicalTelemetryBar({
 
             <div className="col-span-2 flex min-h-[76px] flex-col justify-between rounded-lg border border-slate-200 bg-slate-50/70 px-2.5 py-2 sm:col-span-1">
               <div className="truncate text-[10.5px] font-semibold text-slate-500">
-                <BilingualTerm fr="Ouverture min." en="Minimum Mouth Opening" />
+                Ouverture min.
               </div>
               <div className="flex items-baseline gap-1">
                 <span
@@ -225,7 +226,7 @@ export function ClinicalTelemetryBar({
             </div>
           )}
         </div>
-      )}
+      </SmoothDrawer>
     </section>
   );
 }

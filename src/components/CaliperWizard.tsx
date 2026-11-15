@@ -8,8 +8,6 @@ import {
   ChevronDown,
   Copy,
   Info,
-  Maximize2,
-  Minimize2,
   Minus,
   Pencil,
   Plus,
@@ -19,6 +17,7 @@ import {
 } from 'lucide-react';
 import {
   ComputedGeometry,
+  DEFAULT_SIMULATION_PARAMS,
   ResettableParamKey,
   SimulationParams,
   clamp,
@@ -30,13 +29,11 @@ import { BilingualTerm } from './BilingualTerm';
 interface CaliperWizardProps {
   params: SimulationParams;
   geometry: ComputedGeometry;
-  filters: { fullscreen: boolean };
   theme: 'light' | 'dark';
   editingKitId?: string | null;
   editingKitName?: string;
   onChangeParams: (patch: Partial<SimulationParams>) => void;
   onResetParam: (key: ResettableParamKey) => void;
-  onToggleFilter: (key: 'fullscreen') => void;
   onSaveNewKit: (name: string) => void;
   onCancel: () => void;
 }
@@ -61,7 +58,7 @@ interface WizardStepDef {
   id: WizardStepId;
   shortLabel: string;
   titleFr: string;
-  titleEn: string;
+  titleEn?: string;
   subtitle: string;
 }
 
@@ -162,6 +159,7 @@ function CaliperParamSlider({
   labelEn,
   note,
   value,
+  defaultValue,
   min,
   max,
   step,
@@ -172,9 +170,10 @@ function CaliperParamSlider({
 }: {
   id: string;
   labelFr: string;
-  labelEn: string;
+  labelEn?: string;
   note?: string;
   value: number;
+  defaultValue?: number;
   min: number;
   max: number;
   step: number;
@@ -183,11 +182,12 @@ function CaliperParamSlider({
   onChange: (val: number) => void;
   onReset: () => void;
 }) {
+  const isModified = defaultValue !== undefined ? Math.abs(value - defaultValue) >= 0.005 : true;
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-3.5">
       <div className="flex items-center justify-between gap-2 text-xs">
         <label htmlFor={id} className="font-semibold text-slate-800">
-          <BilingualTerm fr={labelFr} en={labelEn} />
+          {labelEn ? <BilingualTerm fr={labelFr} en={labelEn} /> : labelFr}
         </label>
         <div className="flex items-center gap-2 shrink-0">
           <span className="font-mono-tabular text-sm font-bold text-sky-700">
@@ -196,9 +196,16 @@ function CaliperParamSlider({
           <button
             type="button"
             onClick={onReset}
+            disabled={!isModified}
+            aria-hidden={!isModified}
+            tabIndex={isModified ? 0 : -1}
             aria-label={`Réinitialiser ${labelFr}`}
             title={`Réinitialiser ${labelFr}`}
-            className="inline-flex h-6 w-6 items-center justify-center rounded border border-slate-200 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
+            className={`inline-flex h-6 w-6 items-center justify-center rounded border border-slate-200 text-slate-500 transition-opacity duration-150 ${
+              isModified
+                ? 'opacity-100 hover:bg-slate-100 hover:text-slate-800'
+                : 'invisible opacity-0 pointer-events-none'
+            }`}
           >
             <RotateCcw className="h-3 w-3" aria-hidden="true" />
           </button>
@@ -244,13 +251,11 @@ function CaliperParamSlider({
 export function CaliperWizard({
   params,
   geometry,
-  filters,
   theme,
   editingKitId = null,
   editingKitName = '',
   onChangeParams,
   onResetParam,
-  onToggleFilter,
   onSaveNewKit,
   onCancel,
 }: CaliperWizardProps) {
@@ -291,7 +296,6 @@ export function CaliperWizard({
         id: 'kind',
         shortLabel: 'Type foret',
         titleFr: 'Type de foret du système implantaire',
-        titleEn: 'Drill System Type: Guided vs Pilot',
         subtitle:
           'Cliquez sur une des deux options pour définir si votre système utilise des forets guidés ou des forets pilotes.',
       },
@@ -299,7 +303,6 @@ export function CaliperWizard({
         id: 'sleeve',
         shortLabel: 'Douille',
         titleFr: 'Avec ou sans douille métallique',
-        titleEn: 'Metal Sleeve vs Sleeveless Guide',
         subtitle:
           'Indiquez si vos forets travaillent dans une douille métallique ou directement dans le guide résine.',
       },
@@ -311,7 +314,6 @@ export function CaliperWizard({
           id: 'seating',
           shortLabel: 'Position',
           titleFr: 'Position de la collerette sur le guide',
-          titleEn: 'Sleeve Collar Seating Position',
           subtitle:
             'Précisez si la collerette repose au-dessus du guide (épaisseur déduite du décalage) ou à fleur.',
         },
@@ -319,7 +321,6 @@ export function CaliperWizard({
           id: 'sleeveLip',
           shortLabel: 'Collerette',
           titleFr: 'Épaisseur de la collerette de douille',
-          titleEn: 'Sleeve Collar Lip Thickness',
           subtitle:
             'Mesurez au pied à coulisse l’épaisseur du rebord supérieur de la douille métallique.',
         },
@@ -327,7 +328,6 @@ export function CaliperWizard({
           id: 'sleeveWall',
           shortLabel: 'Paroi douille',
           titleFr: 'Épaisseur de paroi du cylindre de douille',
-          titleEn: 'Sleeve Cylinder Wall Thickness',
           subtitle:
             'Mesurez l’épaisseur d’une paroi métallique (multipliée par 2 dans le diamètre du puits résine).',
         },
@@ -335,7 +335,6 @@ export function CaliperWizard({
           id: 'drillSleeveClearance',
           shortLabel: 'Jeu douille/foret',
           titleFr: 'Jeu souhaité entre douille et foret',
-          titleEn: 'Desired Drill-to-Sleeve Clearance',
           subtitle:
             'Réglez la tolérance de glissement entre la partie guidante du foret et l’intérieur de la douille.',
         },
@@ -347,7 +346,6 @@ export function CaliperWizard({
         id: 'drillStop',
         shortLabel: 'Butée foret',
         titleFr: 'Épaisseur de la butée du foret',
-        titleEn: 'Drill Stop Thickness (Schematic)',
         subtitle:
           'Mesure visuelle pour un schéma fidèle à l’échelle (n’influe pas sur les cotes Blue Sky Plan).',
       },
@@ -355,7 +353,6 @@ export function CaliperWizard({
         id: 'guidingDiameter',
         shortLabel: 'Ø guidage',
         titleFr: 'Diamètre de la partie guidante du foret',
-        titleEn: 'Drill Guiding Barrel Diameter',
         subtitle:
           'Mesurez au pied à coulisse le diamètre du canon lisse qui coulisse dans le guide ou la douille.',
       },
@@ -363,7 +360,6 @@ export function CaliperWizard({
         id: 'guidingHeight',
         shortLabel: 'Hauteur',
         titleFr: 'Hauteur de la partie guidante',
-        titleEn: 'Guiding Barrel Height',
         subtitle:
           'Mesurez la hauteur du cylindre guidant (donne la valeur « Hauteur » dans Blue Sky Plan).',
       },
@@ -371,7 +367,6 @@ export function CaliperWizard({
         id: 'printingClearance',
         shortLabel: 'Jeu 3D',
         titleFr: 'Jeu d’impression 3D du guide',
-        titleEn: '3D Printing Resin Clearance',
         subtitle:
           'Compense le retrait de polymérisation de la résine pour éviter tout blocage du foret ou de la douille.',
       },
@@ -385,17 +380,15 @@ export function CaliperWizard({
       },
       {
         id: 'drillCatalog',
-        shortLabel: 'Forets & Décalage',
-        titleFr: 'Longueurs, diamètres des forets et décalage par défaut',
-        titleEn: 'Available Drills & Default Offset',
+        shortLabel: 'Catalogue forets',
+        titleFr: 'Longueurs et diamètres des forets du système',
         subtitle:
-          'Définissez les longueurs utiles disponibles, les diamètres de forets et le décalage par défaut.',
+          'Définissez les longueurs utiles disponibles et les diamètres de forets du système.',
       },
       {
         id: 'implantCorrelation',
         shortLabel: 'Implants',
         titleFr: 'Corrélation avec les largeurs et longueurs d’implants',
-        titleEn: 'Implant Width & Length Correlation',
         subtitle:
           'Associez les diamètres (Ø) et longueurs (L) d’implants de votre gamme aux forets correspondants.',
       },
@@ -403,7 +396,6 @@ export function CaliperWizard({
         id: 'recap',
         shortLabel: 'Validation BSP',
         titleFr: 'Récapitulatif et valeurs Blue Sky Plan',
-        titleEn: 'Summary & Blue Sky Plan Parameters',
         subtitle:
           'Consultez vos mesures et vos valeurs « Tube de guidage de logiciel » puis enregistrez votre système implantaire.',
       },
@@ -685,23 +677,16 @@ export function CaliperWizard({
   return (
     <div
       data-testid="caliper-wizard-panel"
-      className={`relative flex flex-col rounded-xl border border-slate-200 bg-white shadow-xs ${
-        filters.fullscreen ? 'fixed inset-3 z-50 overflow-auto shadow-2xl' : ''
-      }`}
+      className="relative flex flex-col rounded-xl border border-slate-200 bg-white shadow-xs"
     >
-      {/* Top Toolbar */}
+      {/* Top Toolbar (Full screen removed permanently) */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-4 py-2.5">
-        <div className="flex items-center gap-2 min-w-0">
-          <Ruler className="h-4 w-4 text-sky-600 shrink-0" aria-hidden="true" />
-          <h2 className="text-sm font-semibold text-slate-900 whitespace-nowrap">
-            <BilingualTerm
-              fr={
-                editingKitId
-                  ? `Modifier le système : ${editingKitName || kitName}`
-                  : 'Assistant pied à coulisse — Créer mon système implantaire'
-              }
-              en="Digital Caliper Guided Implant System Wizard"
-            />
+        <div className="flex items-start gap-2 min-w-0 flex-1">
+          <Ruler className="mt-0.5 h-4 w-4 text-sky-600 shrink-0" aria-hidden="true" />
+          <h2 className="min-w-0 text-sm font-semibold leading-snug text-slate-900">
+            {editingKitId
+              ? `Modifier le système : ${editingKitName || kitName}`
+              : 'Assistant pied à coulisse — Créer mon système implantaire'}
           </h2>
         </div>
 
@@ -709,25 +694,6 @@ export function CaliperWizard({
           <span className="font-mono-tabular rounded-md border border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] font-bold text-sky-800">
             Étape {safeIndex + 1} / {steps.length}
           </span>
-
-          <button
-            type="button"
-            onClick={() => onToggleFilter('fullscreen')}
-            aria-label={filters.fullscreen ? 'Quitter le mode plein écran' : 'Mode plein écran'}
-            className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 whitespace-nowrap hover:bg-slate-50"
-          >
-            {filters.fullscreen ? (
-              <>
-                <Minimize2 className="h-3.5 w-3.5" aria-hidden="true" />
-                Réduire
-              </>
-            ) : (
-              <>
-                <Maximize2 className="h-3.5 w-3.5" aria-hidden="true" />
-                Plein écran
-              </>
-            )}
-          </button>
 
           <button
             type="button"
@@ -762,7 +728,11 @@ export function CaliperWizard({
       {/* Step Header */}
       <div className="border-b border-slate-100 bg-white px-4 py-2.5">
         <h3 className="text-sm font-semibold text-slate-900">
-          <BilingualTerm fr={currentStep.titleFr} en={currentStep.titleEn} />
+          {currentStep.titleEn ? (
+            <BilingualTerm fr={currentStep.titleFr} en={currentStep.titleEn} />
+          ) : (
+            currentStep.titleFr
+          )}
         </h3>
         <p className="mt-0.5 text-xs text-slate-600">{currentStep.subtitle}</p>
       </div>
@@ -927,14 +897,120 @@ export function CaliperWizard({
           </div>
         )}
 
+        {/* ÉTAPE 8 (drillCatalog) TOP BLOCKS ABOVE SVG: Longueurs utiles + Diamètres des forets */}
+        {currentStep.id === 'drillCatalog' && (
+          <div
+            data-testid="wizard-drill-catalog-top"
+            className="grid grid-cols-1 gap-3 md:grid-cols-2"
+          >
+            {/* Lengths */}
+            <div className="rounded-xl border border-slate-200 bg-white p-3">
+              <div className="text-xs font-semibold text-slate-900">
+                {params.wizardKind === 'pilot'
+                  ? 'Longueurs de forets pilotes (mm)'
+                  : 'Longueurs utiles de forets (mm)'}
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {params.wizardAvailableLengths.map((len) => (
+                  <span
+                    key={len}
+                    className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-mono-tabular font-semibold text-slate-800"
+                  >
+                    {len.toFixed(1)}
+                    {params.wizardAvailableLengths.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveLength(len)}
+                        aria-label={`Retirer ${len.toFixed(1)} mm`}
+                        className="text-slate-400 hover:text-rose-600"
+                      >
+                        <X className="h-3 w-3" aria-hidden="true" />
+                      </button>
+                    )}
+                  </span>
+                ))}
+              </div>
+              <div className="mt-2 flex items-center gap-1.5">
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={newLengthInput}
+                  onChange={(e) => {
+                    setNewLengthInput(e.target.value);
+                    setLengthError(null);
+                  }}
+                  placeholder={params.wizardKind === 'pilot' ? 'Ex: 27.0' : 'Ex: 14.0'}
+                  className="w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddLength}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-md bg-slate-900 px-2.5 py-1 text-xs font-medium text-white hover:bg-slate-800"
+                >
+                  <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                  Ajouter
+                </button>
+              </div>
+              {lengthError && <p className="mt-1 text-[11px] text-rose-600">{lengthError}</p>}
+            </div>
+
+            {/* Drill Diameters */}
+            <div className="rounded-xl border border-slate-200 bg-white p-3">
+              <div className="text-xs font-semibold text-slate-900">
+                Diamètres des forets du système (mm)
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {params.wizardDrillDiameters.map((dia) => (
+                  <span
+                    key={dia}
+                    className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-mono-tabular font-semibold text-slate-800"
+                  >
+                    Ø{dia.toFixed(1)}
+                    {params.wizardDrillDiameters.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveDrillDia(dia)}
+                        aria-label={`Retirer foret Ø${dia.toFixed(1)}`}
+                        className="text-slate-400 hover:text-rose-600"
+                      >
+                        <X className="h-3 w-3" aria-hidden="true" />
+                      </button>
+                    )}
+                  </span>
+                ))}
+              </div>
+              <div className="mt-2 flex items-center gap-1.5">
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={newDrillDiaInput}
+                  onChange={(e) => {
+                    setNewDrillDiaInput(e.target.value);
+                    setDrillDiaError(null);
+                  }}
+                  placeholder="Ex: 5.2"
+                  className="w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddDrillDia}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-md bg-slate-900 px-2.5 py-1 text-xs font-medium text-white hover:bg-slate-800"
+                >
+                  <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                  Ajouter
+                </button>
+              </div>
+              {drillDiaError && <p className="mt-1 text-[11px] text-rose-600">{drillDiaError}</p>}
+            </div>
+          </div>
+        )}
+
         {/* SINGLE-PARAMETER STEPS + CATALOG + IMPLANT CORRELATION: LOCKED CALIPER SVG STAGE */}
         {!isBinaryChoiceStep && currentStep.id !== 'recap' && (
           <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-2">
             <svg
               viewBox={`0 0 ${SVG_W} ${SVG_H}`}
-              className={`w-full select-none ${
-                filters.fullscreen ? 'h-[calc(100vh-340px)]' : 'h-[310px]'
-              }`}
+              className="h-[260px] sm:h-[310px] w-full select-none"
               data-testid="caliper-stage-svg"
               role="img"
               aria-label={`Étape ${safeIndex + 1} sur ${steps.length} — ${currentStep.titleFr}`}
@@ -1404,13 +1480,13 @@ export function CaliperWizard({
           <CaliperParamSlider
             id="wiz-sleeve-lip"
             labelFr="Épaisseur de la collerette"
-            labelEn="Sleeve Collar Lip Thickness"
             note={
               params.wizardSleeveSeating === 'above'
                 ? 'Posée au-dessus du guide : cette épaisseur est déduite du décalage Blue Sky Plan.'
                 : 'Posée à fleur : 0 mm déduit du décalage.'
             }
             value={params.wizardSleeveLipThickness}
+            defaultValue={DEFAULT_SIMULATION_PARAMS.wizardSleeveLipThickness}
             min={0}
             max={2.0}
             step={0.05}
@@ -1423,9 +1499,9 @@ export function CaliperWizard({
           <CaliperParamSlider
             id="wiz-sleeve-wall"
             labelFr="Épaisseur paroi du cylindre"
-            labelEn="Sleeve Cylinder Wall"
             note="Ajoutée deux fois (2 × paroi) au diamètre du trou résine dans Blue Sky Plan."
             value={params.wizardSleeveWallThickness}
+            defaultValue={DEFAULT_SIMULATION_PARAMS.wizardSleeveWallThickness}
             min={0.15}
             max={1.0}
             step={0.05}
@@ -1438,9 +1514,9 @@ export function CaliperWizard({
           <CaliperParamSlider
             id="wiz-drill-sleeve-clear"
             labelFr="Jeu souhaité douille / foret"
-            labelEn="Drill-to-Sleeve Clearance"
             note="Tolérance radiale de glissement entre le foret et le métal de la douille."
             value={params.wizardDrillToSleeveClearance}
+            defaultValue={DEFAULT_SIMULATION_PARAMS.wizardDrillToSleeveClearance}
             min={0.02}
             max={0.4}
             step={0.01}
@@ -1453,9 +1529,9 @@ export function CaliperWizard({
           <CaliperParamSlider
             id="wiz-drill-stop"
             labelFr="Épaisseur butée du foret"
-            labelEn="Drill Stop Thickness"
             note="Information visuelle pour le schéma 2D uniquement — non comptée dans le calcul Blue Sky Plan."
             value={params.wizardDrillStopThickness}
+            defaultValue={DEFAULT_SIMULATION_PARAMS.wizardDrillStopThickness}
             min={0.5}
             max={4.0}
             step={0.1}
@@ -1469,9 +1545,9 @@ export function CaliperWizard({
           <CaliperParamSlider
             id="wiz-guiding-dia"
             labelFr="Diamètre partie guidante"
-            labelEn="Guiding Barrel Diameter"
             note="Base du calcul du « Diamètre du trou de guidage »."
             value={params.wizardGuidingDiameter}
+            defaultValue={DEFAULT_SIMULATION_PARAMS.wizardGuidingDiameter}
             min={1.5}
             max={6.0}
             step={0.05}
@@ -1484,9 +1560,9 @@ export function CaliperWizard({
           <CaliperParamSlider
             id="wiz-guiding-height"
             labelFr="Hauteur partie guidante"
-            labelEn="Guiding Barrel Height"
             note="Correspond directement à la valeur « Hauteur » dans Blue Sky Plan."
             value={params.wizardGuidingHeight}
+            defaultValue={DEFAULT_SIMULATION_PARAMS.wizardGuidingHeight}
             min={2.0}
             max={8.0}
             step={0.1}
@@ -1501,8 +1577,8 @@ export function CaliperWizard({
             <CaliperParamSlider
               id="wiz-print-clear"
               labelFr="Jeu d’impression 3D"
-              labelEn="3D Printing Clearance"
               value={params.wizardPrintingClearance}
+              defaultValue={DEFAULT_SIMULATION_PARAMS.wizardPrintingClearance}
               min={0.0}
               max={0.4}
               step={0.01}
@@ -1527,6 +1603,7 @@ export function CaliperWizard({
               labelFr="Décalage du guide chirurgical"
               labelEn="Surgical Guide Offset"
               value={params.wizardSurgicalGuideOffset}
+              defaultValue={DEFAULT_SIMULATION_PARAMS.wizardSurgicalGuideOffset}
               min={0.05}
               max={0.6}
               step={0.05}
@@ -1545,121 +1622,27 @@ export function CaliperWizard({
           </div>
         )}
 
-        {/* STEP: DRILL CATALOG (LENGTHS + DIAMETERS + DEFAULT OFFSET) */}
+        {/* ÉTAPE 8 BOTTOM CONTROL BELOW SVG: Renamed "Longueur utile affichée" — hides "Décalage total par défaut" numeric value until Recap */}
         {currentStep.id === 'drillCatalog' && (
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-            {/* Lengths */}
-            <div className="rounded-xl border border-slate-200 bg-white p-3">
-              <div className="text-xs font-semibold text-slate-900">
-                {params.wizardKind === 'pilot'
-                  ? 'Longueurs de forets pilotes (mm)'
-                  : 'Longueurs utiles de forets (mm)'}
-              </div>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {params.wizardAvailableLengths.map((len) => (
-                  <span
-                    key={len}
-                    className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-mono-tabular font-semibold text-slate-800"
-                  >
-                    {len.toFixed(1)}
-                    {params.wizardAvailableLengths.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveLength(len)}
-                        aria-label={`Retirer ${len.toFixed(1)} mm`}
-                        className="text-slate-400 hover:text-rose-600"
-                      >
-                        <X className="h-3 w-3" aria-hidden="true" />
-                      </button>
-                    )}
-                  </span>
-                ))}
-              </div>
-              <div className="mt-2 flex items-center gap-1.5">
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={newLengthInput}
-                  onChange={(e) => {
-                    setNewLengthInput(e.target.value);
-                    setLengthError(null);
-                  }}
-                  placeholder={params.wizardKind === 'pilot' ? 'Ex: 27.0' : 'Ex: 14.0'}
-                  className="w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900"
-                />
-                <button
-                  type="button"
-                  onClick={handleAddLength}
-                  className="inline-flex shrink-0 items-center gap-1 rounded-md bg-slate-900 px-2.5 py-1 text-xs font-medium text-white hover:bg-slate-800"
-                >
-                  <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-                  Ajouter
-                </button>
-              </div>
-              {lengthError && <p className="mt-1 text-[11px] text-rose-600">{lengthError}</p>}
-            </div>
-
-            {/* Drill Diameters */}
-            <div className="rounded-xl border border-slate-200 bg-white p-3">
-              <div className="text-xs font-semibold text-slate-900">
-                Diamètres des forets du système (mm)
-              </div>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {params.wizardDrillDiameters.map((dia) => (
-                  <span
-                    key={dia}
-                    className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-mono-tabular font-semibold text-slate-800"
-                  >
-                    Ø{dia.toFixed(1)}
-                    {params.wizardDrillDiameters.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveDrillDia(dia)}
-                        aria-label={`Retirer foret Ø${dia.toFixed(1)}`}
-                        className="text-slate-400 hover:text-rose-600"
-                      >
-                        <X className="h-3 w-3" aria-hidden="true" />
-                      </button>
-                    )}
-                  </span>
-                ))}
-              </div>
-              <div className="mt-2 flex items-center gap-1.5">
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={newDrillDiaInput}
-                  onChange={(e) => {
-                    setNewDrillDiaInput(e.target.value);
-                    setDrillDiaError(null);
-                  }}
-                  placeholder="Ex: 5.2"
-                  className="w-full rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900"
-                />
-                <button
-                  type="button"
-                  onClick={handleAddDrillDia}
-                  className="inline-flex shrink-0 items-center gap-1 rounded-md bg-slate-900 px-2.5 py-1 text-xs font-medium text-white hover:bg-slate-800"
-                >
-                  <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-                  Ajouter
-                </button>
-              </div>
-              {drillDiaError && <p className="mt-1 text-[11px] text-rose-600">{drillDiaError}</p>}
-            </div>
-
-            {/* Default Offset */}
+          <div data-testid="wizard-drill-catalog-bottom">
             <CaliperParamSlider
-              id="wiz-default-offset"
-              labelFr="Décalage total par défaut"
-              labelEn="Default Implant-to-Stop Offset"
-              note={`Longueur utile affichée : ${geometry.drillUsefulLength.toFixed(1)} mm.`}
-              value={params.wizardDefaultOffset}
-              min={5.0}
-              max={18.0}
+              id="wiz-displayed-useful-length"
+              labelFr="Longueur utile affichée"
+              note="Ajuste la longueur utile sous butée affichée sur le schéma."
+              value={geometry.drillUsefulLength}
+              defaultValue={roundTo(
+                DEFAULT_SIMULATION_PARAMS.wizardDefaultOffset + params.implantLength,
+                1,
+              )}
+              min={roundTo(params.implantLength + 4.0, 1)}
+              max={roundTo(params.implantLength + 20.0, 1)}
               step={0.5}
               decimals={1}
-              onChange={(val) => onChangeParams({ wizardDefaultOffset: val })}
+              onChange={(val) =>
+                onChangeParams({
+                  wizardDefaultOffset: clamp(roundTo(val - params.implantLength, 1), 4.0, 20.0),
+                })
+              }
               onReset={() => onResetParam('wizardDefaultOffset')}
             />
           </div>
@@ -1851,10 +1834,7 @@ export function CaliperWizard({
               <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3.5">
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <div className="text-xs font-bold text-slate-900">
-                    <BilingualTerm
-                      fr="Récapitulatif de votre système implantaire"
-                      en="Implant System Measurement Summary"
-                    />
+                    Récapitulatif de votre système implantaire
                   </div>
                   <span className="text-[10.5px] font-medium text-sky-700">
                     Cliquez sur une valeur pour revoir le pied à coulisse
@@ -2030,14 +2010,27 @@ export function CaliperWizard({
                     title="Rouvrir le pied à coulisse Longueurs, diamètres & décalage"
                     className="sm:col-span-2 group flex items-center justify-between gap-2 rounded-md border border-slate-200/80 bg-white px-2.5 py-1.5 text-left transition-colors hover:border-sky-500 hover:bg-sky-50/60"
                   >
-                    <span className="text-slate-600 shrink-0">Forets (L / Ø / Déc.) :</span>
+                    <span className="text-slate-600 shrink-0">Forets (L / Ø) :</span>
                     <span className="inline-flex min-w-0 items-center gap-1 font-mono-tabular font-semibold text-slate-900 group-hover:text-sky-700">
                       <span className="truncate">
                         L [{params.wizardAvailableLengths.map((l) => l.toFixed(1)).join(', ')}] · Ø [
-                        {params.wizardDrillDiameters.map((d) => d.toFixed(1)).join(', ')}] ·{' '}
-                        {params.wizardDefaultOffset.toFixed(1)} mm
+                        {params.wizardDrillDiameters.map((d) => d.toFixed(1)).join(', ')}]
                       </span>
                       <Pencil className="h-3 w-3 shrink-0 opacity-50 group-hover:opacity-100" aria-hidden="true" />
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => jumpToStepIdFromRecap('drillCatalog')}
+                    data-testid="recap-default-offset"
+                    title="Décalage total par défaut"
+                    className="sm:col-span-2 group flex items-center justify-between gap-2 rounded-md border border-slate-200/80 bg-white px-2.5 py-1.5 text-left transition-colors hover:border-sky-500 hover:bg-sky-50/60"
+                  >
+                    <span className="text-slate-600 shrink-0">Décalage total par défaut :</span>
+                    <span className="inline-flex items-center gap-1 font-mono-tabular font-bold text-sky-700">
+                      {params.wizardDefaultOffset.toFixed(1)} mm
+                      <Pencil className="h-3 w-3 opacity-50 group-hover:opacity-100" aria-hidden="true" />
                     </span>
                   </button>
 
@@ -2072,11 +2065,7 @@ export function CaliperWizard({
                       aria-hidden="true"
                     />
                     <span className="truncate text-xs font-semibold">
-                      <BilingualTerm
-                        fr="Tube de guidage de logiciel"
-                        en="Software Guide Tube"
-                        tone={theme}
-                      />
+                      Tube de guidage de logiciel
                     </span>
                   </div>
                   <span
@@ -2126,7 +2115,9 @@ export function CaliperWizard({
                   </div>
 
                   <div className="grid grid-cols-[minmax(0,1fr)_130px] items-center gap-2">
-                    <div className="text-xs font-medium">Décalage</div>
+                    <div className="text-xs font-medium">
+                      <BilingualTerm fr="Décalage" en="Guide Tube Offset" tone={theme} />
+                    </div>
                     <button
                       type="button"
                       onClick={() => void handleCopyBsp(offsetStr, 'offset')}

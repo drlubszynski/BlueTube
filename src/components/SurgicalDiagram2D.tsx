@@ -13,6 +13,8 @@ import {
   clamp,
   computeVerticalSliderValue,
   getElementHighlightConfig,
+  isDentsplySironaKit,
+  isMisMguideKitId,
   pickOptimalGuidedOffset,
   pickOptimalPilotLength,
   roundTo,
@@ -23,7 +25,6 @@ interface SurgicalDiagram2DProps {
   geometry: ComputedGeometry;
   filters: VisibilityFilters;
   highlightedElement?: DiagramElementFocus | null;
-  tubePanel?: React.ReactNode;
   onSelectElement?: (element: DiagramElementFocus | null) => void;
   onChangeParams: (patch: Partial<SimulationParams>) => void;
   onResetParam?: (key: ResettableParamKey) => void;
@@ -94,7 +95,6 @@ export function SurgicalDiagram2D({
   geometry,
   filters,
   highlightedElement = null,
-  tubePanel,
   onSelectElement,
   onChangeParams,
   onResetParam,
@@ -129,12 +129,15 @@ export function SurgicalDiagram2D({
   const sleeveWallPx = Math.max(4, geometry.blueSkyPlan.sleeveWallThicknessMm * PX_PER_MM);
   const sleeveOuterW = wellW + 2 * sleeveWallPx;
 
-  // Contra-angle geometry above drill shank
+  // Contra-angle geometry above drill shank (0 to 30 mm)
   const shankHeightPx = 3.2 * PX_PER_MM;
-  const headHeightPx = params.handpieceHeadHeight * PX_PER_MM;
+  const clampedHandpieceMm = clamp(params.handpieceHeadHeight, 0.0, 30.0);
+  const headHeightPx = clampedHandpieceMm * PX_PER_MM;
   const yStopTop = yGuideTop - geometry.blueSkyPlan.drillStopThicknessMm * PX_PER_MM;
   const yShankTop = yStopTop - shankHeightPx;
   const yHeadTop = yShankTop - headHeightPx;
+  const minSvgY = Math.min(15, Math.floor(yHeadTop - 42));
+  const isDentsplyVisual = isDentsplySironaKit(geometry.activeKit);
 
   // Deviation cone points
   const yConePivot = (yGuideTop + yGuideBottom) / 2;
@@ -365,11 +368,11 @@ export function SurgicalDiagram2D({
 
   const handpieceSliderSpec: SliderDragSpec = {
     id: 'handpieceHeadHeight',
-    value: params.handpieceHeadHeight,
-    min: 10.0,
-    max: 17.0,
+    value: clampedHandpieceMm,
+    min: 0.0,
+    max: 30.0,
     step: 0.5,
-    pxPerMm: 16,
+    pxPerMm: 12,
     focusElement: 'handpiece',
     resetKey: 'handpieceHeadHeight',
     onChange: (v) => onChangeParams({ handpieceHeadHeight: roundTo(v, 1) }),
@@ -505,8 +508,8 @@ export function SurgicalDiagram2D({
       data-testid="surgical-diagram-card"
       className="relative flex flex-col rounded-xl border border-slate-200 bg-white shadow-xs"
     >
-      {/* Diagram Toolbar (Locked height) */}
-      <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-slate-200 px-3.5">
+      {/* Diagram Toolbar (Responsive height) */}
+      <div className="flex min-h-12 shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-3.5 py-2">
         <div className="flex min-w-0 items-center gap-2">
           <h2
             data-testid="diagram-title"
@@ -585,15 +588,13 @@ export function SurgicalDiagram2D({
         </div>
       </div>
 
-      {/* FULL-BLEED WHITE GRID SCHEMA STAGE + TOP-LEFT EMBEDDED SOFTWARE GUIDE TUBE PANEL */}
+      {/* FULL-BLEED WHITE GRID SCHEMA STAGE (Tube panel extracted below) */}
       <div
         data-testid="surgical-diagram-stage"
-        className="surgical-cad-grid relative h-[470px] w-full overflow-hidden rounded-b-xl lg:h-[520px]"
+        className="surgical-cad-grid relative h-[340px] w-full overflow-hidden rounded-b-xl sm:h-[470px] lg:h-[520px]"
       >
-        {tubePanel}
-
         <svg
-          viewBox={`0 15 ${SVG_WIDTH} ${SVG_HEIGHT - 25}`}
+          viewBox={`0 ${minSvgY} ${SVG_WIDTH} ${SVG_HEIGHT - 10 - minSvgY}`}
           preserveAspectRatio="xMidYMid meet"
           className={`block h-full w-full select-none ${
             activeDimDrag ? 'cursor-ns-resize' : 'cursor-default'
@@ -624,6 +625,14 @@ export function SurgicalDiagram2D({
               <stop offset="100%" stopColor="#64748B" />
             </linearGradient>
 
+            <linearGradient id="biotechChromeGrad" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stopColor="#7A8494" />
+              <stop offset="22%" stopColor="#CBD5E1" />
+              <stop offset="56%" stopColor="#FFFFFF" />
+              <stop offset="80%" stopColor="#B8C4D4" />
+              <stop offset="100%" stopColor="#5B6473" />
+            </linearGradient>
+
             <linearGradient id="handpieceGrad" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="#F8FAFC" />
               <stop offset="38%" stopColor="#E2E8F0" />
@@ -636,6 +645,28 @@ export function SurgicalDiagram2D({
               <stop offset="35%" stopColor="#475569" />
               <stop offset="75%" stopColor="#1E293B" />
               <stop offset="100%" stopColor="#090D16" />
+            </linearGradient>
+
+            <linearGradient id="misSteelShankGrad" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stopColor="#7C8594" />
+              <stop offset="28%" stopColor="#CBD5E1" />
+              <stop offset="52%" stopColor="#F8FAFC" />
+              <stop offset="78%" stopColor="#94A3B8" />
+              <stop offset="100%" stopColor="#5B6472" />
+            </linearGradient>
+
+            <linearGradient id="misCylinderLeftGrad" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stopColor="#64748B" />
+              <stop offset="65%" stopColor="#7E8999" />
+              <stop offset="100%" stopColor="#525D6D" />
+            </linearGradient>
+
+            <linearGradient id="misConicalBladeGrad" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stopColor="#8590A0" />
+              <stop offset="36%" stopColor="#E2E8F0" />
+              <stop offset="55%" stopColor="#94A3B8" />
+              <stop offset="84%" stopColor="#CBD5E1" />
+              <stop offset="100%" stopColor="#64748B" />
             </linearGradient>
 
             <linearGradient id="enamelGrad" x1="0" y1="0" x2="1" y2="1">
@@ -659,16 +690,16 @@ export function SurgicalDiagram2D({
           {/* Transparent click-to-deselect canvas layer over full-bleed white grid */}
           <rect
             x="0"
-            y="0"
+            y={minSvgY}
             width={SVG_WIDTH}
-            height={SVG_HEIGHT}
+            height={SVG_HEIGHT - minSvgY}
             fill="transparent"
             onClick={() => onSelectElement?.(null)}
           />
 
           <line
             x1={CX}
-            y1="20"
+            y1={minSvgY + 5}
             x2={CX}
             y2={SVG_HEIGHT - 20}
             stroke="#94A3B8"
@@ -1363,74 +1394,404 @@ export function SurgicalDiagram2D({
                     '#94A3B8',
                   )}
                 </g>
-              ) : (
-                <g>
-                  <rect
-                    x={CX - 14}
-                    y={yShankTop}
-                    width="28"
-                    height={yStopTop - yShankTop}
-                    fill="url(#steelShankGrad)"
-                    stroke="#475569"
-                    strokeWidth="1.1"
-                  />
-                  <rect x={CX - 14} y={yShankTop + 6} width="6" height="9" fill="#475569" />
-
-                  <rect
-                    x={CX - canonW / 2 - 7}
-                    y={yStopTop}
-                    width={canonW + 14}
-                    height={yGuideTop - yStopTop}
-                    rx="2"
-                    fill="url(#steelShankGrad)"
-                    stroke="#334155"
-                    strokeWidth="1.2"
-                  />
-
-                  {geometry.drillRingColorHex && (
-                    <rect
-                      x={CX - canonW / 2 - 7}
-                      y={yStopTop + 5}
-                      width={canonW + 14}
-                      height="7"
-                      fill={geometry.drillRingColorHex}
-                      stroke="#1E293B"
-                      strokeWidth="0.6"
-                    />
-                  )}
-
-                  <rect
-                    x={CX - canonW / 2}
-                    y={yGuideTop}
-                    width={canonW}
-                    height={Math.max(12, yGuideBottom - yGuideTop + 10)}
-                    fill="url(#steelShankGrad)"
-                    stroke="#334155"
-                    strokeWidth="1.2"
-                  />
-
+              ) : isDentsplyVisual ? (
+                <g
+                  data-testid="dentsply-sirona-drill-visual"
+                  data-mis-style={isMisMguideKitId(geometry.activeKit.id) ? 'stainless-conical' : 'stainless-guided'}
+                  data-ring-color={geometry.drillRingColorHex ?? 'none'}
+                >
                   {(() => {
-                    const bodyTop = yGuideBottom + 10;
-                    const stepTransitionY = Math.max(bodyTop + 16, yDrillTip - 3.5 * PX_PER_MM);
+                    const flangeH = clamp(
+                      geometry.blueSkyPlan.drillStopThicknessMm * PX_PER_MM * 0.42,
+                      5,
+                      10,
+                    );
+                    const yFlangeTop = yGuideTop - flangeH;
+                    const flangeOverhang = 5.5;
+                    const shankW = 24;
+                    const shankL = CX - shankW / 2;
+                    const shankR = CX + shankW / 2;
+                    const ringH = 7.5;
+                    const ringY = Math.max(yShankTop + 14, yFlangeTop - ringH - 7);
+                    const cylinderBottom = Math.max(yGuideBottom + 9, yGuideTop + 16);
+                    const reliefDrop = 8;
+                    const bodyTop = cylinderBottom + reliefDrop;
+                    const isPilotDiameter = geometry.drillActiveDiameter <= 2.55;
+                    const apexBaseW = isPilotDiameter
+                      ? activeDrillW
+                      : Math.max(prevDrillW * 0.88, activeDrillW * 0.68);
+                    const apicalStepY = Math.max(bodyTop + 12, yDrillTip - 11);
+
                     return (
                       <>
+                        {/* RA Contra-Angle Stainless Steel Latch Shank */}
                         <path
-                          d={`M ${CX - canonW / 2} ${bodyTop}
-                              L ${CX - activeDrillW / 2} ${bodyTop + 8}
-                              L ${CX - activeDrillW / 2} ${stepTransitionY}
-                              L ${CX - prevDrillW / 2} ${stepTransitionY + 5}
-                              L ${CX - prevDrillW / 2} ${yDrillTip - 8}
-                              L ${CX} ${yDrillTip}
-                              L ${CX + prevDrillW / 2} ${yDrillTip - 8}
-                              L ${CX + prevDrillW / 2} ${stepTransitionY + 5}
-                              L ${CX + activeDrillW / 2} ${stepTransitionY}
-                              L ${CX + activeDrillW / 2} ${bodyTop + 8}
-                              L ${CX + canonW / 2} ${bodyTop} Z`}
-                          fill="url(#steelShankGrad)"
-                          stroke="#334155"
-                          strokeWidth="1.2"
+                          d={`M ${shankL + 2} ${yShankTop - 2}
+                              L ${shankR - 2} ${yShankTop - 2}
+                              L ${shankR} ${yShankTop}
+                              L ${shankR} ${yShankTop + 4}
+                              L ${CX + 5} ${yShankTop + 4}
+                              L ${CX + 5} ${yShankTop + 9}
+                              L ${shankR} ${yShankTop + 9}
+                              L ${shankR} ${yShankTop + 15}
+                              L ${shankR - 2.5} ${yShankTop + 15}
+                              L ${shankR - 2.5} ${yFlangeTop}
+                              L ${shankL} ${yFlangeTop}
+                              L ${shankL} ${yShankTop} Z`}
+                          fill="url(#misSteelShankGrad)"
+                          stroke="#475569"
+                          strokeWidth="1.1"
+                          strokeLinejoin="round"
                         />
-                        {renderDrillFlutes(bodyTop + 8, yDrillTip, activeDrillW, '#475569')}
+
+                        {/* Anodized Color-Coded Band ON THE SHANK (or plain groove for Pilot Ø2.4) */}
+                        {geometry.drillRingColorHex ? (
+                          <g>
+                            <rect
+                              data-testid="mis-shank-color-ring"
+                              x={shankL}
+                              y={ringY}
+                              width={shankW - 2.5}
+                              height={ringH}
+                              fill={geometry.drillRingColorHex}
+                              stroke="#1E293B"
+                              strokeWidth="0.7"
+                            />
+                            <rect
+                              x={shankL + 5}
+                              y={ringY + 0.6}
+                              width="4.5"
+                              height={ringH - 1.2}
+                              fill="#FFFFFF"
+                              opacity="0.26"
+                            />
+                          </g>
+                        ) : (
+                          <g>
+                            <rect
+                              x={shankL}
+                              y={ringY}
+                              width={shankW - 2.5}
+                              height={ringH}
+                              fill="#94A3B8"
+                              stroke="#475569"
+                              strokeWidth="0.7"
+                            />
+                            <line
+                              x1={shankL}
+                              y1={ringY + ringH / 2}
+                              x2={shankR - 2.5}
+                              y2={ringY + ringH / 2}
+                              stroke="#475569"
+                              strokeWidth="0.7"
+                            />
+                          </g>
+                        )}
+
+                        {/* Slim Precision Mechanical Stopper Flange */}
+                        <path
+                          d={`M ${CX - canonW / 2 - flangeOverhang} ${yFlangeTop}
+                              L ${CX + canonW / 2 + flangeOverhang} ${yFlangeTop}
+                              L ${CX + canonW / 2 + flangeOverhang} ${yGuideTop - 1.5}
+                              L ${CX + canonW / 2} ${yGuideTop}
+                              L ${CX - canonW / 2} ${yGuideTop}
+                              L ${CX - canonW / 2 - flangeOverhang} ${yGuideTop - 1.5} Z`}
+                          fill="url(#misSteelShankGrad)"
+                          stroke="#334155"
+                          strokeWidth="1.1"
+                          strokeLinejoin="round"
+                        />
+
+                        {/* Precision Keyless Guiding Cylinder with Dual-Tone Irrigation Flat Channel */}
+                        <rect
+                          x={CX - canonW / 2}
+                          y={yGuideTop}
+                          width={canonW}
+                          height={cylinderBottom - yGuideTop}
+                          fill="url(#misSteelShankGrad)"
+                          stroke="#334155"
+                          strokeWidth="1.15"
+                        />
+                        {/* Left flat vertical irrigation/debris facet */}
+                        <rect
+                          x={CX - canonW / 2 + 0.8}
+                          y={yGuideTop + 0.8}
+                          width={canonW * 0.41}
+                          height={Math.max(4, cylinderBottom - yGuideTop - 1.2)}
+                          fill="url(#misCylinderLeftGrad)"
+                          opacity="0.88"
+                        />
+                        {/* Subtle top circumferential cylinder groove */}
+                        <line
+                          x1={CX - canonW / 2 + 1}
+                          y1={yGuideTop + 6}
+                          x2={CX + canonW / 2 - 1}
+                          y2={yGuideTop + 6}
+                          stroke="#64748B"
+                          strokeWidth="0.8"
+                          opacity="0.65"
+                        />
+                        {/* Helical angled relief bevel exiting bottom of guiding cylinder */}
+                        <path
+                          d={`M ${CX - canonW / 2} ${cylinderBottom}
+                              Q ${CX - canonW * 0.25} ${cylinderBottom - 3} ${CX - activeDrillW / 2} ${bodyTop}
+                              L ${CX + activeDrillW / 2} ${bodyTop}
+                              Q ${CX + canonW * 0.35} ${cylinderBottom + 4} ${CX + canonW / 2} ${cylinderBottom} Z`}
+                          fill="url(#misSteelShankGrad)"
+                          stroke="#334155"
+                          strokeWidth="1.1"
+                          strokeLinejoin="round"
+                        />
+
+                        {/* Cutting Blade: Conical Tapered Stainless Steel Flutes (or Helical Twist for Ø2.4 Pilot) */}
+                        {isPilotDiameter ? (
+                          <>
+                            <path
+                              d={`M ${CX - activeDrillW / 2} ${bodyTop}
+                                  L ${CX + activeDrillW / 2} ${bodyTop}
+                                  L ${CX + activeDrillW / 2} ${yDrillTip - 8}
+                                  L ${CX} ${yDrillTip}
+                                  L ${CX - activeDrillW / 2} ${yDrillTip - 8} Z`}
+                              fill="url(#misConicalBladeGrad)"
+                              stroke="#334155"
+                              strokeWidth="1.1"
+                            />
+                            {renderDrillFlutes(
+                              bodyTop + 2,
+                              yDrillTip,
+                              activeDrillW,
+                              '#475569',
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <path
+                              d={`M ${CX - activeDrillW / 2} ${bodyTop}
+                                  L ${CX + activeDrillW / 2} ${bodyTop}
+                                  L ${CX + apexBaseW / 2} ${apicalStepY}
+                                  L ${CX + apexBaseW * 0.44} ${yDrillTip - 7}
+                                  L ${CX} ${yDrillTip}
+                                  L ${CX - apexBaseW * 0.44} ${yDrillTip - 7}
+                                  L ${CX - apexBaseW / 2} ${apicalStepY} Z`}
+                              fill="url(#misConicalBladeGrad)"
+                              stroke="#334155"
+                              strokeWidth="1.1"
+                              strokeLinejoin="round"
+                            />
+                            {/* Central straight longitudinal flute channel */}
+                            <path
+                              d={`M ${CX - activeDrillW * 0.14} ${bodyTop + 1}
+                                  L ${CX + activeDrillW * 0.14} ${bodyTop + 1}
+                                  L ${CX + apexBaseW * 0.12} ${yDrillTip - 7}
+                                  L ${CX - apexBaseW * 0.12} ${yDrillTip - 7} Z`}
+                              fill="#64748B"
+                              opacity="0.45"
+                            />
+                            {/* Crisp apical chamfer edge */}
+                            <line
+                              x1={CX - apexBaseW * 0.46}
+                              y1={yDrillTip - 7}
+                              x2={CX + apexBaseW * 0.46}
+                              y2={yDrillTip - 7}
+                              stroke="#475569"
+                              strokeWidth="0.9"
+                              opacity="0.7"
+                            />
+                          </>
+                        )}
+                      </>
+                    );
+                  })()}
+                </g>
+              ) : (
+                <g
+                  data-testid="guided-drill-visual"
+                  data-biotech-style="chrome-stepped"
+                  data-ring-color={geometry.drillRingColorHex ?? 'none'}
+                >
+                  {(() => {
+                    const flangeH = clamp(
+                      geometry.blueSkyPlan.drillStopThicknessMm * PX_PER_MM * 0.45,
+                      5,
+                      7.5,
+                    );
+                    const yFlangeTop = yGuideTop - flangeH;
+                    const flangeOverhang = 5.5;
+                    const shankW = 20;
+                    const shankL = CX - shankW / 2;
+                    const shankR = CX + shankW / 2;
+                    const ringH = 7;
+                    const ringY = Math.max(yShankTop + 14, yFlangeTop - ringH - 2.5);
+                    const barrelBottom = Math.max(yGuideBottom + 8, yGuideTop + 18);
+                    const chamferDrop = 6.5;
+                    const neckTop = barrelBottom + chamferDrop;
+                    const isStepped = geometry.drillActiveDiameter > 2.25;
+                    const stepTransitionY = Math.max(neckTop + 18, yDrillTip - 3.6 * PX_PER_MM);
+
+                    return (
+                      <>
+                        {/* RA Contra-Angle Latch Shank (KATLAFE* Chrome Stainless Steel) */}
+                        <path
+                          d={`M ${shankL + 2} ${yShankTop - 2}
+                              L ${shankR - 2} ${yShankTop - 2}
+                              L ${shankR} ${yShankTop}
+                              L ${shankR} ${yShankTop + 4}
+                              L ${CX + 4.5} ${yShankTop + 4}
+                              L ${CX + 4.5} ${yShankTop + 9}
+                              L ${shankR} ${yShankTop + 9}
+                              L ${shankR} ${yFlangeTop}
+                              L ${shankL} ${yFlangeTop}
+                              L ${shankL} ${yShankTop + 13}
+                              L ${shankL + 2} ${yShankTop + 13}
+                              L ${shankL + 2} ${yShankTop + 3}
+                              L ${shankL} ${yShankTop + 3}
+                              L ${shankL} ${yShankTop} Z`}
+                          fill="url(#biotechChromeGrad)"
+                          stroke="#475569"
+                          strokeWidth="1.05"
+                          strokeLinejoin="round"
+                        />
+
+                        {/* Subtle vertical laser nominal diameter etching strictly within exposed shank window */}
+                        {ringY - yShankTop >= 23 && (
+                          <text
+                            x={CX + 2.5}
+                            y={ringY - 3}
+                            textAnchor="start"
+                            fontSize="6.5"
+                            fontWeight="700"
+                            letterSpacing="0.2"
+                            fill="#334155"
+                            opacity="0.82"
+                            fontFamily="JetBrains Mono, monospace"
+                            transform={`rotate(-90 ${CX + 2.5} ${ringY - 3})`}
+                          >
+                            {geometry.drillMarking.split(' ')[0]}
+                          </text>
+                        )}
+
+                        {/* Anodized Color Ring Directly Above Stopper Flange (omitted for Ø2.0 pure steel KATLAFE20xx) */}
+                        {geometry.drillRingColorHex && (
+                          <g>
+                            <rect
+                              data-testid="biotech-shank-color-ring"
+                              x={shankL}
+                              y={ringY}
+                              width={shankW}
+                              height={ringH}
+                              fill={geometry.drillRingColorHex}
+                              stroke="#1E293B"
+                              strokeWidth="0.65"
+                            />
+                            <rect
+                              x={CX + 1}
+                              y={ringY + 0.5}
+                              width="4"
+                              height={ringH - 1}
+                              fill="#FFFFFF"
+                              opacity="0.28"
+                            />
+                          </g>
+                        )}
+
+                        {/* Slim Chamfered Stopper Flange at yGuideTop */}
+                        <path
+                          d={`M ${CX - canonW / 2 - flangeOverhang} ${yFlangeTop}
+                              L ${CX + canonW / 2 + flangeOverhang} ${yFlangeTop}
+                              L ${CX + canonW / 2 + flangeOverhang} ${yGuideTop - 1.5}
+                              L ${CX + canonW / 2} ${yGuideTop}
+                              L ${CX - canonW / 2} ${yGuideTop}
+                              L ${CX - canonW / 2 - flangeOverhang} ${yGuideTop - 1.5} Z`}
+                          fill="url(#biotechChromeGrad)"
+                          stroke="#334155"
+                          strokeWidth="1.1"
+                          strokeLinejoin="round"
+                        />
+
+                        {/* Mirror-Polished Cylindrical Guiding Barrel */}
+                        <rect
+                          x={CX - canonW / 2}
+                          y={yGuideTop}
+                          width={canonW}
+                          height={barrelBottom - yGuideTop}
+                          fill="url(#biotechChromeGrad)"
+                          stroke="#334155"
+                          strokeWidth="1.15"
+                        />
+                        {/* Symmetrical 45° Bottom Chamfer Shoulder */}
+                        <path
+                          d={`M ${CX - canonW / 2} ${barrelBottom}
+                              L ${CX + canonW / 2} ${barrelBottom}
+                              L ${CX + activeDrillW / 2} ${neckTop}
+                              L ${CX - activeDrillW / 2} ${neckTop} Z`}
+                          fill="url(#biotechChromeGrad)"
+                          stroke="#334155"
+                          strokeWidth="1.1"
+                          strokeLinejoin="round"
+                        />
+
+                        {/* Active Cutting Blade: 2-Stage Stepped Helical (KATLAFE30xx–48xx) or Helical Pilot (KATLAFE20xx) */}
+                        {isStepped ? (
+                          <>
+                            <path
+                              d={`M ${CX - activeDrillW / 2} ${neckTop}
+                                  L ${CX + activeDrillW / 2} ${neckTop}
+                                  L ${CX + activeDrillW / 2} ${stepTransitionY}
+                                  L ${CX + prevDrillW / 2} ${stepTransitionY + 4.5}
+                                  L ${CX + prevDrillW / 2} ${yDrillTip - 7.5}
+                                  L ${CX} ${yDrillTip}
+                                  L ${CX - prevDrillW / 2} ${yDrillTip - 7.5}
+                                  L ${CX - prevDrillW / 2} ${stepTransitionY + 4.5}
+                                  L ${CX - activeDrillW / 2} ${stepTransitionY} Z`}
+                              fill="url(#biotechChromeGrad)"
+                              stroke="#334155"
+                              strokeWidth="1.15"
+                              strokeLinejoin="round"
+                            />
+                            {/* Stepped shoulder chamfer highlight */}
+                            <line
+                              x1={CX - prevDrillW / 2}
+                              y1={stepTransitionY + 4.5}
+                              x2={CX + prevDrillW / 2}
+                              y2={stepTransitionY + 4.5}
+                              stroke="#475569"
+                              strokeWidth="0.9"
+                              opacity="0.65"
+                            />
+                            {renderDrillFlutes(
+                              neckTop + 4,
+                              stepTransitionY + 2,
+                              activeDrillW,
+                              '#475569',
+                            )}
+                            {renderDrillFlutes(
+                              stepTransitionY + 5,
+                              yDrillTip,
+                              prevDrillW,
+                              '#475569',
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <path
+                              d={`M ${CX - activeDrillW / 2} ${neckTop}
+                                  L ${CX + activeDrillW / 2} ${neckTop}
+                                  L ${CX + activeDrillW / 2} ${yDrillTip - 7.5}
+                                  L ${CX} ${yDrillTip}
+                                  L ${CX - activeDrillW / 2} ${yDrillTip - 7.5} Z`}
+                              fill="url(#biotechChromeGrad)"
+                              stroke="#334155"
+                              strokeWidth="1.15"
+                              strokeLinejoin="round"
+                            />
+                            {renderDrillFlutes(
+                              neckTop + 4,
+                              yDrillTip,
+                              activeDrillW,
+                              '#475569',
+                            )}
+                          </>
+                        )}
                       </>
                     );
                   })()}
@@ -1439,15 +1800,18 @@ export function SurgicalDiagram2D({
             </g>
           )}
 
-          {/* 8. ERGONOMIC 20:1 CONTRA-ANGLE HANDPIECE (Direct vertical slider on the contra-angle itself) */}
+          {/* 8. ERGONOMIC 20:1 CONTRA-ANGLE HANDPIECE (0 to 30 mm direct vertical slider) */}
           {filters.handpiece && (() => {
-            const headBottom = yHeadTop + headHeightPx;
-            const headMidY = yHeadTop + headHeightPx * 0.48;
+            const headBottom = yShankTop;
+            const visualTop = Math.min(yHeadTop, headBottom - 10);
+            const effectiveVisH = headBottom - visualTop;
+            const headMidY = visualTop + effectiveVisH * 0.48;
             const hpHot =
               hoveredDim === 'handpieceHeadHeight' ||
               activeDimDrag?.id === 'handpieceHeadHeight' ||
               highlightedElement === 'handpiece';
-            const hpLabelY = Math.max(24, yHeadTop - 16);
+            const hpLabelY = visualTop - 16;
+            const isLowProfile = headHeightPx < 22;
             return (
               <g
                 data-testid="svg-click-handpiece"
@@ -1455,9 +1819,9 @@ export function SurgicalDiagram2D({
                 role="slider"
                 tabIndex={0}
                 aria-label="Curseur Contre-angle 20:1 : hauteur de tête (glisser verticalement, double-cliquer pour réinitialiser)"
-                aria-valuemin={10.0}
-                aria-valuemax={17.0}
-                aria-valuenow={params.handpieceHeadHeight}
+                aria-valuemin={0.0}
+                aria-valuemax={30.0}
+                aria-valuenow={clampedHandpieceMm}
                 className={`svg-clickable-element cursor-ns-resize outline-none ${
                   highlightedElement === 'handpiece' ? 'svg-element-selected' : ''
                 }`}
@@ -1477,85 +1841,101 @@ export function SurgicalDiagram2D({
                   if (e.key === 'ArrowUp' || e.key === 'ArrowRight') {
                     e.preventDefault();
                     handpieceSliderSpec.onChange(
-                      clamp(roundTo(handpieceSliderSpec.value + handpieceSliderSpec.step, 1), 10.0, 17.0),
+                      clamp(roundTo(handpieceSliderSpec.value + handpieceSliderSpec.step, 1), 0.0, 30.0),
                     );
                   } else if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') {
                     e.preventDefault();
                     handpieceSliderSpec.onChange(
-                      clamp(roundTo(handpieceSliderSpec.value - handpieceSliderSpec.step, 1), 10.0, 17.0),
+                      clamp(roundTo(handpieceSliderSpec.value - handpieceSliderSpec.step, 1), 0.0, 30.0),
                     );
                   }
                 }}
               >
                 <title>
-                  Contre-angle 20:1 ({params.handpieceHeadHeight.toFixed(1)} mm) — Glisser haut/bas directement sur le contre-angle pour modifier, double-cliquer pour réinitialiser
+                  Contre-angle 20:1 ({clampedHandpieceMm.toFixed(1)} mm) — Glisser haut/bas directement sur le contre-angle pour modifier, double-cliquer pour réinitialiser
                 </title>
-                <path
-                  d={`M ${CX + 18} ${yHeadTop + 16}
-                      C ${CX + 58} ${yHeadTop + 14}, ${CX + 96} ${yHeadTop - 2}, ${CX + 150} ${yHeadTop - 8}
-                      L ${CX + 312} ${yHeadTop - 16}
-                      L ${CX + 312} ${headMidY + 18}
-                      L ${CX + 150} ${headMidY + 12}
-                      C ${CX + 96} ${headMidY + 16}, ${CX + 58} ${headBottom - 16}, ${CX + 18} ${headBottom - 14} Z`}
-                  fill="url(#handpieceGrad)"
-                  stroke={hpHot ? '#0284C7' : '#475569'}
-                  strokeWidth={hpHot ? '2.1' : '1.3'}
-                  strokeLinejoin="round"
-                  pointerEvents="none"
-                />
-                <rect
-                  x={CX - 17}
-                  y={headBottom - 4}
-                  width="34"
-                  height="9"
-                  rx="2"
-                  fill="#CBD5E1"
-                  stroke={hpHot ? '#0284C7' : '#475569'}
-                  strokeWidth={hpHot ? '1.6' : '1.1'}
-                  pointerEvents="none"
-                />
-                <path
-                  d={`M ${CX - 23} ${yHeadTop + 10}
-                      C ${CX - 23} ${yHeadTop + 2}, ${CX - 16} ${yHeadTop}, ${CX} ${yHeadTop}
-                      C ${CX + 16} ${yHeadTop}, ${CX + 23} ${yHeadTop + 2}, ${CX + 23} ${yHeadTop + 10}
-                      L ${CX + 21} ${headBottom - 4}
-                      C ${CX + 21} ${headBottom}, ${CX + 15} ${headBottom + 2}, ${CX} ${headBottom + 2}
-                      C ${CX - 15} ${headBottom + 2}, ${CX - 21} ${headBottom}, ${CX - 21} ${headBottom - 4} Z`}
-                  fill="url(#handpieceGrad)"
-                  stroke={hpHot ? '#0284C7' : '#475569'}
-                  strokeWidth={hpHot ? '2.2' : '1.4'}
-                  pointerEvents="none"
-                />
-                <path
-                  d={`M ${CX - 15} ${yHeadTop}
-                      Q ${CX} ${yHeadTop - 8} ${CX + 15} ${yHeadTop} Z`}
-                  fill="#94A3B8"
-                  stroke={hpHot ? '#0284C7' : '#475569'}
-                  strokeWidth={hpHot ? '1.6' : '1.1'}
-                  pointerEvents="none"
-                />
-                <path
-                  d={`M ${CX + 82} ${yHeadTop + 7} L ${CX + 88} ${yHeadTop + 6} L ${CX + 88} ${headMidY + 17} L ${CX + 82} ${headMidY + 18} Z`}
-                  fill="#0284C7"
-                  pointerEvents="none"
-                />
-                <line
-                  x1={CX + 148}
-                  y1={yHeadTop - 8}
-                  x2={CX + 148}
-                  y2={headMidY + 12}
-                  stroke="#64748B"
-                  strokeWidth="1"
-                  opacity="0.6"
-                  pointerEvents="none"
-                />
+                {!isLowProfile ? (
+                  <>
+                    <path
+                      d={`M ${CX + 18} ${visualTop + Math.min(16, effectiveVisH * 0.25)}
+                          C ${CX + 58} ${visualTop + Math.min(14, effectiveVisH * 0.2)}, ${CX + 96} ${visualTop - 2}, ${CX + 150} ${visualTop - 8}
+                          L ${CX + 312} ${visualTop - 16}
+                          L ${CX + 312} ${headMidY + 18}
+                          L ${CX + 150} ${headMidY + 12}
+                          C ${CX + 96} ${headMidY + 16}, ${CX + 58} ${headBottom - Math.min(16, effectiveVisH * 0.25)}, ${CX + 18} ${headBottom - Math.min(14, effectiveVisH * 0.2)} Z`}
+                      fill="url(#handpieceGrad)"
+                      stroke={hpHot ? '#0284C7' : '#475569'}
+                      strokeWidth={hpHot ? '2.1' : '1.3'}
+                      strokeLinejoin="round"
+                      pointerEvents="none"
+                    />
+                    <rect
+                      x={CX - 17}
+                      y={headBottom - 4}
+                      width="34"
+                      height="9"
+                      rx="2"
+                      fill="#CBD5E1"
+                      stroke={hpHot ? '#0284C7' : '#475569'}
+                      strokeWidth={hpHot ? '1.6' : '1.1'}
+                      pointerEvents="none"
+                    />
+                    <path
+                      d={`M ${CX - 23} ${visualTop + Math.min(10, effectiveVisH * 0.2)}
+                          C ${CX - 23} ${visualTop + 2}, ${CX - 16} ${visualTop}, ${CX} ${visualTop}
+                          C ${CX + 16} ${visualTop}, ${CX + 23} ${visualTop + 2}, ${CX + 23} ${visualTop + Math.min(10, effectiveVisH * 0.2)}
+                          L ${CX + 21} ${headBottom - 4}
+                          C ${CX + 21} ${headBottom}, ${CX + 15} ${headBottom + 2}, ${CX} ${headBottom + 2}
+                          C ${CX - 15} ${headBottom + 2}, ${CX - 21} ${headBottom}, ${CX - 21} ${headBottom - 4} Z`}
+                      fill="url(#handpieceGrad)"
+                      stroke={hpHot ? '#0284C7' : '#475569'}
+                      strokeWidth={hpHot ? '2.2' : '1.4'}
+                      pointerEvents="none"
+                    />
+                    <path
+                      d={`M ${CX - 15} ${visualTop}
+                          Q ${CX} ${visualTop - 8} ${CX + 15} ${visualTop} Z`}
+                      fill="#94A3B8"
+                      stroke={hpHot ? '#0284C7' : '#475569'}
+                      strokeWidth={hpHot ? '1.6' : '1.1'}
+                      pointerEvents="none"
+                    />
+                    <path
+                      d={`M ${CX + 82} ${visualTop + 7} L ${CX + 88} ${visualTop + 6} L ${CX + 88} ${headMidY + 17} L ${CX + 82} ${headMidY + 18} Z`}
+                      fill="#0284C7"
+                      pointerEvents="none"
+                    />
+                    <line
+                      x1={CX + 148}
+                      y1={visualTop - 8}
+                      x2={CX + 148}
+                      y2={headMidY + 12}
+                      stroke="#64748B"
+                      strokeWidth="1"
+                      opacity="0.6"
+                      pointerEvents="none"
+                    />
+                  </>
+                ) : (
+                  <rect
+                    x={CX - 18}
+                    y={headBottom - 6}
+                    width="36"
+                    height="9"
+                    rx="2.5"
+                    fill="url(#handpieceGrad)"
+                    stroke={hpHot ? '#0284C7' : '#475569'}
+                    strokeWidth={hpHot ? '1.8' : '1.1'}
+                    pointerEvents="none"
+                  />
+                )}
 
                 {/* Label badge anchored above the contra-angle */}
                 <g data-testid="svg-dim-handpieceHeadHeight" data-hot={hpHot ? 'true' : 'false'}>
                   <rect
                     x={CX + 42}
                     y={hpLabelY - 12}
-                    width="164"
+                    width="172"
                     height="17"
                     rx="3.5"
                     fill={hpHot ? '#F0F9FF' : 'transparent'}
@@ -1571,14 +1951,14 @@ export function SurgicalDiagram2D({
                     fill={hpHot ? '#0369A1' : '#334155'}
                     pointerEvents="none"
                   >
-                    Contre-angle 20:1 ({params.handpieceHeadHeight.toFixed(1)} mm)
+                    Contre-angle 20:1 ({clampedHandpieceMm.toFixed(1)} mm)
                   </text>
                 </g>
 
                 {/* Vertical slider arrow cues on hover/drag */}
                 {hpHot && (
                   <g fill="#0284C7" opacity="0.92" pointerEvents="none">
-                    <polygon points={`${CX - 3},${yHeadTop - 10} ${CX + 3},${yHeadTop - 10} ${CX},${yHeadTop - 15}`} />
+                    <polygon points={`${CX - 3},${visualTop - 10} ${CX + 3},${visualTop - 10} ${CX},${visualTop - 15}`} />
                     <polygon points={`${CX - 3},${headBottom + 8} ${CX + 3},${headBottom + 8} ${CX},${headBottom + 13}`} />
                   </g>
                 )}

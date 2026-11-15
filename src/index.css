@@ -53,6 +53,7 @@
 
 .bsp-shell {
   min-height: 100vh;
+  overflow-x: clip;
   background-color: var(--bsp-bg);
   color: var(--bsp-text);
   transition: background-color 150ms ease, color 150ms ease;
@@ -142,6 +143,7 @@
 }
 
 .bsp-tube-panel {
+  position: relative;
   overflow: hidden;
   isolation: isolate;
   background-color: var(--bsp-tube-bg);
@@ -566,6 +568,63 @@ input[type='number'].no-spin {
 
 .svg-element-selected {
   filter: drop-shadow(0 0 7px rgba(2, 132, 199, 0.65));
+}
+
+/* Universal tactile button feedback (hover highlight + active press feedback) */
+button {
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    box-shadow 140ms ease,
+    transform 90ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 150ms ease;
+}
+
+button:not(:disabled) {
+  cursor: pointer;
+}
+
+button:not(:disabled):hover {
+  filter: brightness(0.98);
+  box-shadow: 0 1px 4px rgba(14, 165, 233, 0.14);
+}
+
+[data-bsp-theme='dark'] button:not(:disabled):hover {
+  filter: brightness(1.09);
+  box-shadow: 0 1px 6px rgba(56, 189, 248, 0.18);
+}
+
+button:not(:disabled):active {
+  transform: scale(0.97);
+  filter: brightness(0.94);
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+/* Smooth downward vertical drawer expansion using CSS Grid row animation */
+.smooth-drawer {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    grid-template-rows 240ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 200ms ease,
+    visibility 240ms ease;
+}
+
+.smooth-drawer[data-open='true'] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  visibility: visible;
+}
+
+.smooth-drawer-inner {
+  overflow: hidden;
+  min-height: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {

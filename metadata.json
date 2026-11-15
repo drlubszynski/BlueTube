@@ -1,0 +1,6 @@
+{
+  "name": "OrthoGuide CAD — Simulateur de Chirurgie Implantaire Guidée",
+  "description": "Calculateur géométrique et simulateur 2D interactif pour la chirurgie implantaire dentaire guidée (Biotech Dental, Global D et assistant pied à coulisse).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

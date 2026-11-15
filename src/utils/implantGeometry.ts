@@ -32,7 +32,7 @@ export type HighlightableParamKey =
 export interface ElementHighlightConfig {
   element: DiagramElementFocus;
   label: string;
-  openDrawer: 3 | 4 | null;
+  openDrawer: 2 | 3 | 4 | null;
   params: HighlightableParamKey[];
 }
 
@@ -44,28 +44,28 @@ export function getElementHighlightConfig(
       return {
         element: 'implant',
         label: 'Implant',
-        openDrawer: null,
+        openDrawer: 2,
         params: ['implantDiameter', 'implantLength'],
       };
     case 'gingiva':
       return {
         element: 'gingiva',
         label: 'Gencive (muqueuse)',
-        openDrawer: 3,
+        openDrawer: 4,
         params: ['gingivaThickness'],
       };
     case 'subcrestal':
       return {
         element: 'subcrestal',
         label: 'Crête & enfouissement sous-crestal',
-        openDrawer: 3,
+        openDrawer: 2,
         params: ['subcrestalDepth'],
       };
     case 'surgical_guide':
       return {
         element: 'surgical_guide',
         label: 'Guide chirurgical & tube',
-        openDrawer: 4,
+        openDrawer: 3,
         params: [
           'guideHeight',
           'surgicalGuideOffset',
@@ -78,14 +78,14 @@ export function getElementHighlightConfig(
       return {
         element: 'sleeve',
         label: 'Douille métallique',
-        openDrawer: 4,
+        openDrawer: 3,
         params: ['sleeve', 'guideHeight', 'bspPanel'],
       };
     case 'drill':
       return {
         element: 'drill',
         label: 'Foret & décalage',
-        openDrawer: null,
+        openDrawer: 2,
         params: ['offsetCao', 'drillUsefulLength', 'bspPanel'],
       };
     case 'handpiece':
@@ -119,6 +119,10 @@ export interface KitParameterSnapshot {
   printingClearanceMm: number;
   surgicalGuideOffsetMm: number;
   drillStopThicknessMm: number;
+  guideTubeExtension?: GuideTubeExtension;
+  handpieceHeadHeightMm?: number;
+  subcrestalDepthMm?: number;
+  gingivaThicknessMm?: number;
   availableLengthsMm: number[];
   drillDiametersMm: number[];
   implantDiametersMm: number[];
@@ -137,6 +141,9 @@ export interface DrillingKit {
   id: string;
   name: string;
   brandLabel: string;
+  systemGroupId?: string;
+  systemGroupName?: string;
+  subSystemLabel?: string;
   implantBrandName?: string;
   implantModelName?: string;
   isFactory: boolean;
@@ -156,12 +163,24 @@ export interface ImplantPresetBrand {
 }
 
 export const BIOTECH_KONTACT_DIAMETERS = [3.0, 3.6, 4.2, 4.8];
-export const BIOTECH_KONTACT_LENGTHS = [8.0, 10.0, 12.0];
-export const BIOTECH_GUIDED_DRILL_LENGTHS = [8.0, 10.0, 12.0];
+export const BIOTECH_KONTACT_LENGTHS = [6.0, 8.0, 10.0, 12.0, 14.0, 16.0];
+export const BIOTECH_GUIDED_DRILL_LENGTHS = [6.0, 8.0, 10.0, 12.0, 14.0, 16.0];
 
 export const GLOBAL_D_PILOT_DRILL_LENGTHS = [17.3, 19.0, 20.5, 22.0, 23.5, 25.5];
 export const GLOBAL_D_IMPLANT_LENGTHS = [6.0, 8.5, 10.0, 11.5, 13.0, 15.0];
 export const GLOBAL_D_IMPLANT_DIAMETERS = [3.0, 3.5, 4.0, 4.5, 5.0];
+
+export const MIS_MGUIDE_IMPLANT_DIAMETERS = [3.3, 3.8, 4.2, 5.0];
+export const MIS_MGUIDE_IMPLANT_LENGTHS = [6.0, 8.0, 10.0, 11.5, 13.0, 16.0];
+export const MIS_MGUIDE_DRILL_LENGTHS = [6.0, 8.0, 10.0, 11.5, 13.0, 16.0];
+export const MIS_MGUIDE_DRILL_DIAMETERS = [2.4, 3.2, 3.6, 4.1, 4.9];
+
+export const MIS_MGUIDE_NARROW_IMPLANT_DIAMETERS = [3.3];
+export const MIS_MGUIDE_NARROW_DRILL_DIAMETERS = [2.4, 2.8, 3.2];
+
+export function isMisMguideKitId(kitId?: string): boolean {
+  return kitId === 'factory-mis-mguide' || kitId === 'factory-mis-mguide-narrow';
+}
 
 export interface GlobalDChartRow {
   catalogueLabel: string;
@@ -223,9 +242,12 @@ export const BIOTECH_DRILL_SPECS: BiotechDrillSpec[] = [
 export const FACTORY_DRILLING_KITS: DrillingKit[] = [
   {
     id: 'factory-biotech-kontact',
-    name: 'Forage guidé Biotech Kontact',
-    brandLabel: 'Marque Biotech · Modèle Kontact · Forets guidés',
-    implantBrandName: 'Biotech',
+    name: 'AtlaSurgery 2 (Biotech Dental)',
+    brandLabel: 'Marque Biotech Dental · Trousse AtlaSurgery 2 (Kontact) · Tubeless 12 mm · Forets 6–16 mm',
+    systemGroupId: 'biotech-kontact',
+    systemGroupName: 'AtlaSurgery 2 (Biotech Dental)',
+    subSystemLabel: 'Standard',
+    implantBrandName: 'Biotech Dental',
     implantModelName: 'Kontact',
     isFactory: true,
     kind: 'guided',
@@ -243,13 +265,13 @@ export const FACTORY_DRILLING_KITS: DrillingKit[] = [
       printingClearanceMm: 0.15,
       surgicalGuideOffsetMm: 0.25,
       drillStopThicknessMm: 2.0,
-      availableLengthsMm: [8.0, 10.0, 12.0],
+      availableLengthsMm: [6.0, 8.0, 10.0, 12.0, 14.0, 16.0],
       drillDiametersMm: [2.0, 3.0, 3.6, 4.2, 4.8],
       implantDiametersMm: [3.0, 3.6, 4.2, 4.8],
-      implantLengthsMm: [8.0, 10.0, 12.0],
+      implantLengthsMm: [6.0, 8.0, 10.0, 12.0, 14.0, 16.0],
     },
     userDefaults: {
-      offsetMm: 10.0,
+      offsetMm: 12.0,
       guidingHeightMm: 4.0,
       guidingDiameterMm: 5.0,
       hasSleeve: false,
@@ -260,17 +282,20 @@ export const FACTORY_DRILLING_KITS: DrillingKit[] = [
       printingClearanceMm: 0.15,
       surgicalGuideOffsetMm: 0.25,
       drillStopThicknessMm: 2.0,
-      availableLengthsMm: [8.0, 10.0, 12.0],
+      availableLengthsMm: [6.0, 8.0, 10.0, 12.0, 14.0, 16.0],
       drillDiametersMm: [2.0, 3.0, 3.6, 4.2, 4.8],
       implantDiametersMm: [3.0, 3.6, 4.2, 4.8],
-      implantLengthsMm: [8.0, 10.0, 12.0],
+      implantLengthsMm: [6.0, 8.0, 10.0, 12.0, 14.0, 16.0],
     },
     history: [],
   },
   {
     id: 'factory-globald-pilot',
-    name: 'Foret pilote Global D',
-    brandLabel: 'Marque Global D · Modèle In-Kone · Calcul inversé L17.3–L25.5',
+    name: 'G20 (Global D)',
+    brandLabel: 'Marque Global D · Trousse G20 · In-Kone · Calcul inversé L17.3–L25.5',
+    systemGroupId: 'globald-pilot',
+    systemGroupName: 'G20 (Global D)',
+    subSystemLabel: 'Pilote',
     implantBrandName: 'Global D',
     implantModelName: 'In-Kone',
     isFactory: true,
@@ -281,12 +306,12 @@ export const FACTORY_DRILLING_KITS: DrillingKit[] = [
       offsetMm: 9.0,
       guidingHeightMm: 4.0,
       guidingDiameterMm: 2.0,
-      hasSleeve: true,
+      hasSleeve: false,
       sleeveSeating: 'above',
       sleeveLipThicknessMm: 0.5,
       sleeveWallThicknessMm: 0.35,
       drillToSleeveClearanceMm: 0.1,
-      printingClearanceMm: 0.05,
+      printingClearanceMm: 0.15,
       surgicalGuideOffsetMm: 0.25,
       drillStopThicknessMm: 2.0,
       availableLengthsMm: [17.3, 19.0, 20.5, 22.0, 23.5, 25.5],
@@ -298,18 +323,120 @@ export const FACTORY_DRILLING_KITS: DrillingKit[] = [
       offsetMm: 9.0,
       guidingHeightMm: 4.0,
       guidingDiameterMm: 2.0,
-      hasSleeve: true,
+      hasSleeve: false,
       sleeveSeating: 'above',
       sleeveLipThicknessMm: 0.5,
       sleeveWallThicknessMm: 0.35,
       drillToSleeveClearanceMm: 0.1,
-      printingClearanceMm: 0.05,
+      printingClearanceMm: 0.15,
       surgicalGuideOffsetMm: 0.25,
       drillStopThicknessMm: 2.0,
       availableLengthsMm: [17.3, 19.0, 20.5, 22.0, 23.5, 25.5],
       drillDiametersMm: [2.0],
       implantDiametersMm: [3.0, 3.5, 4.0, 4.5, 5.0],
       implantLengthsMm: [6.0, 8.5, 10.0, 11.5, 13.0, 15.0],
+    },
+    history: [],
+  },
+  {
+    id: 'factory-mis-mguide',
+    name: 'MGUIDE (MIS · Dentsply Sirona) · Standard',
+    brandLabel: 'Marque MIS (Dentsply Sirona) · Trousse MGUIDE Standard · C1 / V3 / SEVEN · Offset 9,5 mm · H 5 mm',
+    systemGroupId: 'mis-mguide',
+    systemGroupName: 'MGUIDE (MIS · Dentsply Sirona)',
+    subSystemLabel: 'Standard',
+    implantBrandName: 'MIS (Dentsply Sirona)',
+    implantModelName: 'C1 / V3 / SEVEN (Standard)',
+    isFactory: true,
+    kind: 'guided',
+    usageCount: 15,
+    lastUsedAt: '2026-11-12T00:00:00.000Z',
+    factoryDefaults: {
+      offsetMm: 9.5,
+      guidingHeightMm: 5.0,
+      guidingDiameterMm: 5.45,
+      hasSleeve: false,
+      sleeveSeating: 'flush',
+      sleeveLipThicknessMm: 0.0,
+      sleeveWallThicknessMm: 0.5,
+      drillToSleeveClearanceMm: 0.1,
+      printingClearanceMm: 0.15,
+      surgicalGuideOffsetMm: 0.25,
+      drillStopThicknessMm: 2.0,
+      availableLengthsMm: [...MIS_MGUIDE_DRILL_LENGTHS],
+      drillDiametersMm: [...MIS_MGUIDE_DRILL_DIAMETERS],
+      implantDiametersMm: [...MIS_MGUIDE_IMPLANT_DIAMETERS],
+      implantLengthsMm: [...MIS_MGUIDE_IMPLANT_LENGTHS],
+      implantToDrillDiameterMap: { '3.3': 3.2, '3.8': 3.6, '4.2': 4.1, '5.0': 4.9 },
+    },
+    userDefaults: {
+      offsetMm: 9.5,
+      guidingHeightMm: 5.0,
+      guidingDiameterMm: 5.45,
+      hasSleeve: false,
+      sleeveSeating: 'flush',
+      sleeveLipThicknessMm: 0.0,
+      sleeveWallThicknessMm: 0.5,
+      drillToSleeveClearanceMm: 0.1,
+      printingClearanceMm: 0.15,
+      surgicalGuideOffsetMm: 0.25,
+      drillStopThicknessMm: 2.0,
+      availableLengthsMm: [...MIS_MGUIDE_DRILL_LENGTHS],
+      drillDiametersMm: [...MIS_MGUIDE_DRILL_DIAMETERS],
+      implantDiametersMm: [...MIS_MGUIDE_IMPLANT_DIAMETERS],
+      implantLengthsMm: [...MIS_MGUIDE_IMPLANT_LENGTHS],
+      implantToDrillDiameterMap: { '3.3': 3.2, '3.8': 3.6, '4.2': 4.1, '5.0': 4.9 },
+    },
+    history: [],
+  },
+  {
+    id: 'factory-mis-mguide-narrow',
+    name: 'MGUIDE (MIS · Dentsply Sirona) · Narrow',
+    brandLabel: 'Marque MIS (Dentsply Sirona) · Trousse MGUIDE Narrow · Ø3.3 · Offset 9,5 mm · H 5 mm',
+    systemGroupId: 'mis-mguide',
+    systemGroupName: 'MGUIDE (MIS · Dentsply Sirona)',
+    subSystemLabel: 'Narrow',
+    implantBrandName: 'MIS (Dentsply Sirona)',
+    implantModelName: 'C1 / V3 / SEVEN (Narrow)',
+    isFactory: true,
+    kind: 'guided',
+    usageCount: 16,
+    lastUsedAt: '2026-11-13T00:00:00.000Z',
+    factoryDefaults: {
+      offsetMm: 9.5,
+      guidingHeightMm: 5.0,
+      guidingDiameterMm: 3.95,
+      hasSleeve: false,
+      sleeveSeating: 'flush',
+      sleeveLipThicknessMm: 0.0,
+      sleeveWallThicknessMm: 0.5,
+      drillToSleeveClearanceMm: 0.1,
+      printingClearanceMm: 0.15,
+      surgicalGuideOffsetMm: 0.25,
+      drillStopThicknessMm: 2.0,
+      availableLengthsMm: [...MIS_MGUIDE_DRILL_LENGTHS],
+      drillDiametersMm: [...MIS_MGUIDE_NARROW_DRILL_DIAMETERS],
+      implantDiametersMm: [...MIS_MGUIDE_NARROW_IMPLANT_DIAMETERS],
+      implantLengthsMm: [...MIS_MGUIDE_IMPLANT_LENGTHS],
+      implantToDrillDiameterMap: { '3.3': 3.2 },
+    },
+    userDefaults: {
+      offsetMm: 9.5,
+      guidingHeightMm: 5.0,
+      guidingDiameterMm: 3.95,
+      hasSleeve: false,
+      sleeveSeating: 'flush',
+      sleeveLipThicknessMm: 0.0,
+      sleeveWallThicknessMm: 0.5,
+      drillToSleeveClearanceMm: 0.1,
+      printingClearanceMm: 0.15,
+      surgicalGuideOffsetMm: 0.25,
+      drillStopThicknessMm: 2.0,
+      availableLengthsMm: [...MIS_MGUIDE_DRILL_LENGTHS],
+      drillDiametersMm: [...MIS_MGUIDE_NARROW_DRILL_DIAMETERS],
+      implantDiametersMm: [...MIS_MGUIDE_NARROW_IMPLANT_DIAMETERS],
+      implantLengthsMm: [...MIS_MGUIDE_IMPLANT_LENGTHS],
+      implantToDrillDiameterMap: { '3.3': 3.2 },
     },
     history: [],
   },
@@ -341,7 +468,7 @@ export interface SimulationParams {
   mode: SimulatorMode;
   activeKitId: string;
   // Implant-first selection
-  implantBrand: 'kontact' | 'globald' | 'custom';
+  implantBrand: 'kontact' | 'globald' | 'mis' | 'custom';
   customImplantId?: string;
   customImplantName?: string;
   implantDiameter: number;
@@ -492,22 +619,22 @@ export const DEFAULT_SIMULATION_PARAMS: SimulationParams = {
   drillStopThickness: FACTORY_DRILLING_KITS[0].userDefaults.drillStopThicknessMm,
   pilotDrillLength: 19.0,
   wizardKind: 'guided',
-  wizardHasSleeve: true,
+  wizardHasSleeve: false,
   wizardSleeveSeating: 'above',
   wizardSleeveLipThickness: 0.5,
   wizardSleeveWallThickness: 0.35,
   wizardDrillToSleeveClearance: 0.1,
-  wizardPrintingClearance: 0.05,
+  wizardPrintingClearance: 0.15,
   wizardSurgicalGuideOffset: 0.25,
   wizardDrillStopThickness: 2.0,
   wizardGuidingDiameter: 5.0,
   wizardGuidingHeight: 4.0,
-  wizardAvailableLengths: [8.0, 10.0, 12.0],
+  wizardAvailableLengths: [6.0, 8.0, 10.0, 12.0, 14.0, 16.0],
   wizardDrillDiameters: [2.0, 3.0, 3.6, 4.2, 4.8],
   wizardImplantDiameters: [3.0, 3.6, 4.2, 4.8],
-  wizardImplantLengths: [8.0, 10.0, 12.0],
+  wizardImplantLengths: [6.0, 8.0, 10.0, 12.0, 14.0, 16.0],
   wizardImplantToDrillDiameterMap: { '3.0': 3.0, '3.6': 3.6, '4.2': 4.2, '4.8': 4.8 },
-  wizardDefaultOffset: 8.0,
+  wizardDefaultOffset: 12.0,
 };
 
 export function roundTo(value: number, decimals = 2): number {
@@ -532,6 +659,10 @@ export function snapshotFromParams(params: SimulationParams, kit: DrillingKit): 
     printingClearanceMm: roundTo(params.printingClearance, 2),
     surgicalGuideOffsetMm: roundTo(params.surgicalGuideOffset, 2),
     drillStopThicknessMm: roundTo(params.drillStopThickness, 2),
+    guideTubeExtension: params.guideTubeExtension,
+    handpieceHeadHeightMm: roundTo(params.handpieceHeadHeight, 1),
+    subcrestalDepthMm: roundTo(params.subcrestalDepth, 1),
+    gingivaThicknessMm: roundTo(params.gingivaThickness, 1),
     availableLengthsMm: [...kit.userDefaults.availableLengthsMm],
     drillDiametersMm: [...kit.userDefaults.drillDiametersMm],
     implantDiametersMm: [...kit.userDefaults.implantDiametersMm],
@@ -638,12 +769,29 @@ export function pickOptimalGuidedOffset(
   subcrestalDepth: number,
   gingivaThickness: number,
   guideHeight: number,
-  _hasSleeve: boolean,
-  _kitId?: string,
+  hasSleeve: boolean,
+  kitId?: string,
   implantLength = DEFAULT_SIMULATION_PARAMS.implantLength,
   calibrationOffsetMm = 12.0,
   availableDrillLengthsMm: number[] = BIOTECH_GUIDED_DRILL_LENGTHS,
 ): number {
+  const options = getGuidedDrillOptions(
+    implantLength,
+    calibrationOffsetMm,
+    availableDrillLengthsMm,
+    subcrestalDepth,
+    gingivaThickness,
+    guideHeight,
+  );
+  if (!hasSleeve || isMisMguideKitId(kitId)) {
+    const nominalCalibrated = options.find(
+      (opt) =>
+        Math.abs(opt.offsetMm - calibrationOffsetMm) < 0.05 &&
+        opt.freeSpaceMm >= MIN_CLINICAL_FREE_SPACE_MM - 1e-6 &&
+        opt.offsetMm >= guideHeight - 1e-6,
+    );
+    if (nominalCalibrated) return nominalCalibrated.offsetMm;
+  }
   const opt = pickOptimalGuidedDrillOption(
     implantLength,
     calibrationOffsetMm,
@@ -673,6 +821,7 @@ export function paramsPatchFromSnapshot(
     guideHeight?: number;
     calibrationOffsetMm?: number;
     preserveSnapshotOffset?: boolean;
+    kitId?: string;
   },
 ): Partial<SimulationParams> {
   const subcrestal = site?.subcrestalDepth ?? DEFAULT_SIMULATION_PARAMS.subcrestalDepth;
@@ -687,7 +836,7 @@ export function paramsPatchFromSnapshot(
             gingiva,
             guideH,
             snapshot.hasSleeve,
-            undefined,
+            site?.kitId,
             implantLength,
             calibrationOffset,
             snapshot.availableLengthsMm,
@@ -703,6 +852,13 @@ export function paramsPatchFromSnapshot(
     printingClearance: snapshot.printingClearanceMm,
     surgicalGuideOffset: snapshot.surgicalGuideOffsetMm,
     drillStopThickness: snapshot.drillStopThicknessMm,
+    guideTubeExtension: snapshot.guideTubeExtension ?? DEFAULT_SIMULATION_PARAMS.guideTubeExtension,
+    handpieceHeadHeight:
+      snapshot.handpieceHeadHeightMm ?? DEFAULT_SIMULATION_PARAMS.handpieceHeadHeight,
+    subcrestalDepth:
+      site?.subcrestalDepth ?? snapshot.subcrestalDepthMm ?? DEFAULT_SIMULATION_PARAMS.subcrestalDepth,
+    gingivaThickness:
+      site?.gingivaThickness ?? snapshot.gingivaThicknessMm ?? DEFAULT_SIMULATION_PARAMS.gingivaThickness,
   };
   if (kind === 'pilot') {
     patch.pilotDrillLength = pickOptimalPilotLength(
@@ -874,9 +1030,15 @@ export function getDefaultParamPatch(
         ),
       };
     case 'gingivaThickness':
-      return { gingivaThickness: DEFAULT_SIMULATION_PARAMS.gingivaThickness };
+      return {
+        gingivaThickness:
+          def.gingivaThicknessMm ?? DEFAULT_SIMULATION_PARAMS.gingivaThickness,
+      };
     case 'subcrestalDepth':
-      return { subcrestalDepth: DEFAULT_SIMULATION_PARAMS.subcrestalDepth };
+      return {
+        subcrestalDepth:
+          def.subcrestalDepthMm ?? DEFAULT_SIMULATION_PARAMS.subcrestalDepth,
+      };
     case 'implantLength': {
       const defaultLen = DEFAULT_SIMULATION_PARAMS.implantLength;
       if (activeKit.kind === 'pilot') {
@@ -906,13 +1068,18 @@ export function getDefaultParamPatch(
       };
     }
     case 'handpieceHeadHeight':
-      return { handpieceHeadHeight: DEFAULT_SIMULATION_PARAMS.handpieceHeadHeight };
+      return {
+        handpieceHeadHeight:
+          def.handpieceHeadHeightMm ?? DEFAULT_SIMULATION_PARAMS.handpieceHeadHeight,
+      };
     case 'printingClearance':
       return { printingClearance: def.printingClearanceMm };
     case 'surgicalGuideOffset':
       return { surgicalGuideOffset: def.surgicalGuideOffsetMm };
     case 'guideTubeExtension':
-      return { guideTubeExtension: 'gingiva' };
+      return {
+        guideTubeExtension: def.guideTubeExtension ?? DEFAULT_SIMULATION_PARAMS.guideTubeExtension,
+      };
     case 'drillToSleeveClearance':
       return { drillToSleeveClearance: def.drillToSleeveClearanceMm };
     case 'sleeveLipThickness':
@@ -944,6 +1111,159 @@ export function getDefaultParamPatch(
     case 'wizardDefaultOffset':
       return { wizardDefaultOffset: DEFAULT_SIMULATION_PARAMS.wizardDefaultOffset };
   }
+}
+
+export interface ModifiedDefaultItem {
+  key: string;
+  label: string;
+}
+
+export function getModifiedDefaultItems(
+  params: SimulationParams,
+  activeKit: DrillingKit,
+): ModifiedDefaultItem[] {
+  const def = activeKit.userDefaults;
+  const items: ModifiedDefaultItem[] = [];
+
+  if (Math.abs(params.surgicalGuideOffset - def.surgicalGuideOffsetMm) >= 0.005) {
+    items.push({
+      key: 'surgicalGuideOffset',
+      label: `Décalage guide (${params.surgicalGuideOffset.toFixed(2)} mm)`,
+    });
+  }
+  if (Math.abs(params.guideHeight - def.guidingHeightMm) >= 0.04) {
+    items.push({
+      key: 'guideHeight',
+      label: `Hauteur guidage (${params.guideHeight.toFixed(1)} mm)`,
+    });
+  }
+  if (Math.abs(params.printingClearance - def.printingClearanceMm) >= 0.005) {
+    items.push({
+      key: 'printingClearance',
+      label: `Jeu 3D (${params.printingClearance.toFixed(2)} mm)`,
+    });
+  }
+  const defExt = def.guideTubeExtension ?? DEFAULT_SIMULATION_PARAMS.guideTubeExtension;
+  if (params.guideTubeExtension !== defExt) {
+    items.push({
+      key: 'guideTubeExtension',
+      label: `Prolongement (${params.guideTubeExtension === 'bone' ? 'Os' : 'Gencive'})`,
+    });
+  }
+  const defHandpiece = def.handpieceHeadHeightMm ?? DEFAULT_SIMULATION_PARAMS.handpieceHeadHeight;
+  if (Math.abs(params.handpieceHeadHeight - defHandpiece) >= 0.05) {
+    items.push({
+      key: 'handpieceHeadHeight',
+      label: `Contre-angle (${params.handpieceHeadHeight.toFixed(1)} mm)`,
+    });
+  }
+  if (params.hasSleeve !== def.hasSleeve) {
+    items.push({
+      key: 'hasSleeve',
+      label: params.hasSleeve ? 'Avec douille' : 'Sans douille',
+    });
+  } else if (params.hasSleeve) {
+    if (params.sleeveSeating !== def.sleeveSeating) {
+      items.push({
+        key: 'sleeveSeating',
+        label: params.sleeveSeating === 'above' ? 'Douille au-dessus' : 'Douille à fleur',
+      });
+    }
+    if (Math.abs(params.sleeveLipThickness - def.sleeveLipThicknessMm) >= 0.01) {
+      items.push({
+        key: 'sleeveLipThickness',
+        label: `Collerette (${params.sleeveLipThickness.toFixed(2)} mm)`,
+      });
+    }
+    if (Math.abs(params.sleeveWallThickness - def.sleeveWallThicknessMm) >= 0.01) {
+      items.push({
+        key: 'sleeveWallThickness',
+        label: `Paroi douille (${params.sleeveWallThickness.toFixed(2)} mm)`,
+      });
+    }
+    if (Math.abs(params.drillToSleeveClearance - def.drillToSleeveClearanceMm) >= 0.005) {
+      items.push({
+        key: 'drillToSleeveClearance',
+        label: `Jeu douille/foret (${params.drillToSleeveClearance.toFixed(2)} mm)`,
+      });
+    }
+  }
+
+  return items;
+}
+
+export function getRevertDefaultsPatch(activeKit: DrillingKit): Partial<SimulationParams> {
+  const def = activeKit.userDefaults;
+  return {
+    surgicalGuideOffset: def.surgicalGuideOffsetMm,
+    guideHeight: def.guidingHeightMm,
+    printingClearance: def.printingClearanceMm,
+    guideTubeExtension: def.guideTubeExtension ?? DEFAULT_SIMULATION_PARAMS.guideTubeExtension,
+    handpieceHeadHeight:
+      def.handpieceHeadHeightMm ?? DEFAULT_SIMULATION_PARAMS.handpieceHeadHeight,
+    subcrestalDepth:
+      def.subcrestalDepthMm ?? DEFAULT_SIMULATION_PARAMS.subcrestalDepth,
+    gingivaThickness:
+      def.gingivaThicknessMm ?? DEFAULT_SIMULATION_PARAMS.gingivaThickness,
+    hasSleeve: def.hasSleeve,
+    sleeveSeating: def.sleeveSeating,
+    sleeveLipThickness: def.sleeveLipThicknessMm,
+    sleeveWallThickness: def.sleeveWallThicknessMm,
+    drillToSleeveClearance: def.drillToSleeveClearanceMm,
+  };
+}
+
+export function buildSingleParamSnapshotUpdate(
+  key: ResettableParamKey,
+  params: SimulationParams,
+  geometryOffsetCao: number,
+  currentSnapshot: KitParameterSnapshot,
+): KitParameterSnapshot {
+  const next = { ...currentSnapshot };
+  switch (key) {
+    case 'offsetCao':
+      next.offsetMm = roundTo(geometryOffsetCao, 2);
+      break;
+    case 'guideHeight':
+      next.guidingHeightMm = roundTo(params.guideHeight, 2);
+      break;
+    case 'surgicalGuideOffset':
+      next.surgicalGuideOffsetMm = roundTo(params.surgicalGuideOffset, 2);
+      break;
+    case 'guideTubeExtension':
+      next.guideTubeExtension = params.guideTubeExtension;
+      break;
+    case 'printingClearance':
+      next.printingClearanceMm = roundTo(params.printingClearance, 2);
+      break;
+    case 'handpieceHeadHeight':
+      next.handpieceHeadHeightMm = roundTo(params.handpieceHeadHeight, 1);
+      break;
+    case 'sleeveLipThickness':
+      next.sleeveLipThicknessMm = roundTo(params.sleeveLipThickness, 2);
+      break;
+    case 'sleeveWallThickness':
+      next.sleeveWallThicknessMm = roundTo(params.sleeveWallThickness, 2);
+      break;
+    case 'drillToSleeveClearance':
+      next.drillToSleeveClearanceMm = roundTo(params.drillToSleeveClearance, 2);
+      break;
+    case 'subcrestalDepth':
+      next.subcrestalDepthMm = roundTo(params.subcrestalDepth, 1);
+      break;
+    case 'gingivaThickness':
+      next.gingivaThicknessMm = roundTo(params.gingivaThickness, 1);
+      break;
+    case 'guidingDiameter':
+      next.guidingDiameterMm = roundTo(params.guidingDiameter, 2);
+      break;
+    case 'drillStopThickness':
+      next.drillStopThicknessMm = roundTo(params.drillStopThickness, 2);
+      break;
+    default:
+      break;
+  }
+  return next;
 }
 
 export function evaluateClinicalSafety(
@@ -1001,7 +1321,7 @@ export function computeClinicalSuggestion(
 
   if (activeKit.kind === 'guided') {
     const calibrationOffset = activeKit.factoryDefaults.offsetMm;
-    const optimalOption = pickOptimalGuidedDrillOption(
+    const options = getGuidedDrillOptions(
       params.implantLength,
       calibrationOffset,
       activeKit.userDefaults.availableLengthsMm,
@@ -1009,6 +1329,24 @@ export function computeClinicalSuggestion(
       params.gingivaThickness,
       params.guideHeight,
     );
+    const smallestSafeOption = pickOptimalGuidedDrillOption(
+      params.implantLength,
+      calibrationOffset,
+      activeKit.userDefaults.availableLengthsMm,
+      params.subcrestalDepth,
+      params.gingivaThickness,
+      params.guideHeight,
+    );
+    const nominalCalibratedOption =
+      !params.hasSleeve || isMisMguideKitId(activeKit.id)
+        ? options.find(
+            (opt) =>
+              Math.abs(opt.offsetMm - calibrationOffset) < 0.05 &&
+              opt.freeSpaceMm >= MIN_CLINICAL_FREE_SPACE_MM - 1e-6 &&
+              opt.offsetMm >= params.guideHeight - 1e-6,
+          ) ?? null
+        : null;
+    const optimalOption = nominalCalibratedOption ?? smallestSafeOption;
 
     if (optimalOption) {
       const currentDrillLen = matchGuidedDrillToImplant(
@@ -1378,7 +1716,7 @@ export function computePilotComparison(
   });
 }
 
-export const DRILLING_KITS_STORAGE_KEY = 'orthoguide_drilling_kits_v3';
+export const DRILLING_KITS_STORAGE_KEY = 'orthoguide_drilling_kits_v4';
 
 function sanitizeNumberArray(raw: unknown, fallback: number[]): number[] {
   if (!Array.isArray(raw)) return [...fallback];
@@ -1418,6 +1756,22 @@ function sanitizeSnapshot(raw: unknown, fallback: KitParameterSnapshot): KitPara
     printingClearanceMm: num(obj.printingClearanceMm, fallback.printingClearanceMm),
     surgicalGuideOffsetMm: num(obj.surgicalGuideOffsetMm, fallback.surgicalGuideOffsetMm),
     drillStopThicknessMm: num(obj.drillStopThicknessMm, fallback.drillStopThicknessMm),
+    guideTubeExtension:
+      obj.guideTubeExtension === 'bone' || obj.guideTubeExtension === 'gingiva'
+        ? obj.guideTubeExtension
+        : fallback.guideTubeExtension,
+    handpieceHeadHeightMm:
+      typeof obj.handpieceHeadHeightMm === 'number' && Number.isFinite(obj.handpieceHeadHeightMm)
+        ? obj.handpieceHeadHeightMm
+        : fallback.handpieceHeadHeightMm,
+    subcrestalDepthMm:
+      typeof obj.subcrestalDepthMm === 'number' && Number.isFinite(obj.subcrestalDepthMm)
+        ? obj.subcrestalDepthMm
+        : fallback.subcrestalDepthMm,
+    gingivaThicknessMm:
+      typeof obj.gingivaThicknessMm === 'number' && Number.isFinite(obj.gingivaThicknessMm)
+        ? obj.gingivaThicknessMm
+        : fallback.gingivaThicknessMm,
     availableLengthsMm: sanitizeNumberArray(obj.availableLengthsMm, fallback.availableLengthsMm),
     drillDiametersMm: sanitizeNumberArray(obj.drillDiametersMm, fallback.drillDiametersMm),
     implantDiametersMm: sanitizeNumberArray(obj.implantDiametersMm, fallback.implantDiametersMm),
@@ -1429,9 +1783,13 @@ function sanitizeSnapshot(raw: unknown, fallback: KitParameterSnapshot): KitPara
 export function loadDrillingKitsFromStorage(): DrillingKit[] {
   if (typeof window === 'undefined') return FACTORY_DRILLING_KITS;
   try {
-    const raw =
-      window.localStorage.getItem(DRILLING_KITS_STORAGE_KEY) ??
+    const currentRaw = window.localStorage.getItem(DRILLING_KITS_STORAGE_KEY);
+    const legacyRaw =
+      currentRaw ??
+      window.localStorage.getItem('orthoguide_drilling_kits_v3') ??
       window.localStorage.getItem('orthoguide_drilling_kits_v2');
+    const isMigratingFromLegacy = !currentRaw && Boolean(legacyRaw);
+    const raw = legacyRaw;
     if (!raw) return FACTORY_DRILLING_KITS;
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed) || parsed.length === 0) return FACTORY_DRILLING_KITS;
@@ -1464,6 +1822,21 @@ export function loadDrillingKitsFromStorage(): DrillingKit[] {
         brandLabel:
           factoryMatch?.brandLabel ??
           (typeof obj.brandLabel === 'string' ? obj.brandLabel : 'Système personnalisé'),
+        systemGroupId:
+          factoryMatch?.systemGroupId ??
+          (typeof obj.systemGroupId === 'string' ? obj.systemGroupId : undefined),
+        systemGroupName:
+          factoryMatch?.systemGroupName ??
+          (typeof obj.systemGroupName === 'string' ? obj.systemGroupName : undefined),
+        subSystemLabel:
+          factoryMatch?.subSystemLabel ??
+          (typeof obj.subSystemLabel === 'string' ? obj.subSystemLabel : undefined),
+        implantBrandName:
+          factoryMatch?.implantBrandName ??
+          (typeof obj.implantBrandName === 'string' ? obj.implantBrandName : undefined),
+        implantModelName:
+          factoryMatch?.implantModelName ??
+          (typeof obj.implantModelName === 'string' ? obj.implantModelName : undefined),
         isFactory: Boolean(factoryMatch ?? obj.isFactory),
         kind: obj.kind === 'pilot' ? 'pilot' : 'guided',
         usageCount:
@@ -1485,15 +1858,37 @@ export function loadDrillingKitsFromStorage(): DrillingKit[] {
         const existing = loadedById.get(f.id)!;
         const isUnmodifiedLegacyOffset =
           existing.history.length === 0 &&
-          (existing.userDefaults.offsetMm === 12.0 || existing.userDefaults.offsetMm === 8.0);
+          (existing.userDefaults.offsetMm === 12.0 ||
+            existing.userDefaults.offsetMm === 10.0 ||
+            existing.userDefaults.offsetMm === 8.0);
+        const hasLegacyThreeLengths =
+          existing.userDefaults.availableLengthsMm.length === 3 &&
+          existing.userDefaults.availableLengthsMm[0] === 8 &&
+          existing.userDefaults.availableLengthsMm[2] === 12;
+        const hasLegacyImplantLengths =
+          existing.userDefaults.implantLengthsMm.length === 3 &&
+          existing.userDefaults.implantLengthsMm[0] === 8 &&
+          existing.userDefaults.implantLengthsMm[2] === 12;
         loadedById.set(f.id, {
           ...existing,
           name: f.name,
           brandLabel: f.brandLabel,
+          systemGroupId: f.systemGroupId,
+          systemGroupName: f.systemGroupName,
+          subSystemLabel: f.subSystemLabel,
           factoryDefaults: f.factoryDefaults,
-          userDefaults: isUnmodifiedLegacyOffset
-            ? { ...existing.userDefaults, offsetMm: f.userDefaults.offsetMm }
-            : existing.userDefaults,
+          userDefaults: {
+            ...existing.userDefaults,
+            availableLengthsMm: hasLegacyThreeLengths
+              ? [...BIOTECH_GUIDED_DRILL_LENGTHS]
+              : existing.userDefaults.availableLengthsMm,
+            implantLengthsMm: hasLegacyImplantLengths
+              ? [...BIOTECH_KONTACT_LENGTHS]
+              : existing.userDefaults.implantLengthsMm,
+            offsetMm: isUnmodifiedLegacyOffset
+              ? f.userDefaults.offsetMm
+              : existing.userDefaults.offsetMm,
+          },
         });
       } else if (f.id === 'factory-globald-pilot') {
         const existing = loadedById.get(f.id)!;
@@ -1503,10 +1898,14 @@ export function loadDrillingKitsFromStorage(): DrillingKit[] {
           existing.userDefaults.availableLengthsMm[1] === 17.3;
         const isUnmodifiedLegacyOffset =
           existing.history.length === 0 && existing.userDefaults.offsetMm === 10.5;
+        const resetTubelessOnMigration = isMigratingFromLegacy && existing.history.length === 0;
         loadedById.set(f.id, {
           ...existing,
           name: f.name,
           brandLabel: f.brandLabel,
+          systemGroupId: f.systemGroupId,
+          systemGroupName: f.systemGroupName,
+          subSystemLabel: f.subSystemLabel,
           factoryDefaults: f.factoryDefaults,
           userDefaults: {
             ...existing.userDefaults,
@@ -1516,7 +1915,51 @@ export function loadDrillingKitsFromStorage(): DrillingKit[] {
             offsetMm: isUnmodifiedLegacyOffset
               ? f.factoryDefaults.offsetMm
               : existing.userDefaults.offsetMm,
+            hasSleeve: resetTubelessOnMigration ? false : existing.userDefaults.hasSleeve,
+            printingClearanceMm: resetTubelessOnMigration
+              ? 0.15
+              : existing.userDefaults.printingClearanceMm,
           },
+        });
+      } else if (f.id === 'factory-mis-mguide') {
+        const existing = loadedById.get(f.id)!;
+        const isInitialMisV1 =
+          existing.history.length === 0 &&
+          existing.userDefaults.offsetMm === 10.0 &&
+          existing.userDefaults.guidingHeightMm === 4.5 &&
+          existing.userDefaults.guidingDiameterMm === 5.0;
+        const resetTubelessOnMigration = isMigratingFromLegacy && existing.history.length === 0;
+        const baseUserDefaults = isInitialMisV1
+          ? { ...f.userDefaults, hasSleeve: existing.userDefaults.hasSleeve }
+          : existing.userDefaults;
+        loadedById.set(f.id, {
+          ...existing,
+          name: f.name,
+          brandLabel: f.brandLabel,
+          systemGroupId: f.systemGroupId,
+          systemGroupName: f.systemGroupName,
+          subSystemLabel: f.subSystemLabel,
+          implantModelName: f.implantModelName,
+          factoryDefaults: f.factoryDefaults,
+          userDefaults: resetTubelessOnMigration
+            ? { ...baseUserDefaults, hasSleeve: false, printingClearanceMm: 0.15 }
+            : baseUserDefaults,
+        });
+      } else if (f.id === 'factory-mis-mguide-narrow') {
+        const existing = loadedById.get(f.id)!;
+        const resetTubelessOnMigration = isMigratingFromLegacy && existing.history.length === 0;
+        loadedById.set(f.id, {
+          ...existing,
+          name: f.name,
+          brandLabel: f.brandLabel,
+          systemGroupId: f.systemGroupId,
+          systemGroupName: f.systemGroupName,
+          subSystemLabel: f.subSystemLabel,
+          implantModelName: f.implantModelName,
+          factoryDefaults: f.factoryDefaults,
+          userDefaults: resetTubelessOnMigration
+            ? { ...existing.userDefaults, hasSleeve: false, printingClearanceMm: 0.15 }
+            : existing.userDefaults,
         });
       }
     }
@@ -1541,6 +1984,189 @@ export function sortKitsByUsage(kits: DrillingKit[]): DrillingKit[] {
     if (b.usageCount !== a.usageCount) return b.usageCount - a.usageCount;
     return b.lastUsedAt.localeCompare(a.lastUsedAt);
   });
+}
+
+export function sortKitsAlphabetically(kits: DrillingKit[]): DrillingKit[] {
+  return [...kits].sort((a, b) =>
+    a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }),
+  );
+}
+
+export interface DrillingSystemGroup {
+  groupId: string;
+  groupName: string;
+  kind: KitDrillKind;
+  kits: DrillingKit[];
+  usageCount: number;
+  lastUsedAt: string;
+}
+
+export function groupDrillingKitsBySystem(kits: DrillingKit[]): DrillingSystemGroup[] {
+  const groupsMap = new Map<string, DrillingKit[]>();
+  for (const kit of kits) {
+    const gid = kit.systemGroupId ?? kit.id;
+    const list = groupsMap.get(gid) ?? [];
+    list.push(kit);
+    groupsMap.set(gid, list);
+  }
+
+  const groups: DrillingSystemGroup[] = Array.from(groupsMap.entries()).map(
+    ([groupId, groupKits]) => {
+      // Preserve deterministic sub-system order (Narrow first as default, Standard second)
+      const orderedSubKits = [...groupKits].sort((a, b) => {
+        if (a.id === 'factory-mis-mguide-narrow' && b.id === 'factory-mis-mguide') return -1;
+        if (a.id === 'factory-mis-mguide' && b.id === 'factory-mis-mguide-narrow') return 1;
+        return (a.subSystemLabel ?? a.name).localeCompare(
+          b.subSystemLabel ?? b.name,
+          'fr',
+          { sensitivity: 'base' },
+        );
+      });
+      const primary = orderedSubKits[0];
+      const maxUsage = Math.max(...orderedSubKits.map((k) => k.usageCount));
+      const latestUsedAt = orderedSubKits.reduce(
+        (best, k) => (k.lastUsedAt > best ? k.lastUsedAt : best),
+        orderedSubKits[0].lastUsedAt,
+      );
+      return {
+        groupId,
+        groupName: primary.systemGroupName ?? primary.name,
+        kind: primary.kind,
+        kits: orderedSubKits,
+        usageCount: maxUsage,
+        lastUsedAt: latestUsedAt,
+      };
+    },
+  );
+
+  return groups.sort((a, b) =>
+    a.groupName.localeCompare(b.groupName, 'fr', { sensitivity: 'base' }),
+  );
+}
+
+export interface DrillingSystemsLayout {
+  mainGroupIds: string[];
+  libraryGroupIds: string[];
+}
+
+export const DRILLING_SYSTEMS_LAYOUT_STORAGE_KEY = 'orthoguide_drilling_systems_layout_v1';
+
+export function resolveDrillingSystemsLayout(
+  kits: DrillingKit[],
+  savedLayout: DrillingSystemsLayout | null,
+): { mainGroups: DrillingSystemGroup[]; libraryGroups: DrillingSystemGroup[] } {
+  const allAlphaGroups = groupDrillingKitsBySystem(kits);
+  if (!savedLayout) {
+    return {
+      mainGroups: allAlphaGroups.slice(0, 3),
+      libraryGroups: allAlphaGroups.slice(3),
+    };
+  }
+
+  const byId = new Map(allAlphaGroups.map((g) => [g.groupId, g]));
+  const assigned = new Set<string>();
+  const mainGroups: DrillingSystemGroup[] = [];
+  const libraryGroups: DrillingSystemGroup[] = [];
+
+  for (const id of savedLayout.mainGroupIds) {
+    const group = byId.get(id);
+    if (group && !assigned.has(id)) {
+      mainGroups.push(group);
+      assigned.add(id);
+    }
+  }
+
+  for (const id of savedLayout.libraryGroupIds) {
+    const group = byId.get(id);
+    if (group && !assigned.has(id)) {
+      libraryGroups.push(group);
+      assigned.add(id);
+    }
+  }
+
+  for (const group of allAlphaGroups) {
+    if (!assigned.has(group.groupId)) {
+      if (mainGroups.length < 3) {
+        mainGroups.push(group);
+      } else {
+        libraryGroups.push(group);
+      }
+      assigned.add(group.groupId);
+    }
+  }
+
+  return { mainGroups, libraryGroups };
+}
+
+export function reorderDrillingSystemGroups(
+  currentMainIds: string[],
+  currentLibraryIds: string[],
+  draggedGroupId: string,
+  targetZone: 'main' | 'library',
+  targetIndex?: number,
+): DrillingSystemsLayout {
+  const nextMain = currentMainIds.filter((id) => id !== draggedGroupId);
+  const nextLibrary = currentLibraryIds.filter((id) => id !== draggedGroupId);
+  const targetList = targetZone === 'main' ? nextMain : nextLibrary;
+  const sourceList = targetZone === 'main' ? currentMainIds : currentLibraryIds;
+
+  const rawIndex =
+    typeof targetIndex === 'number' && Number.isFinite(targetIndex)
+      ? targetIndex
+      : targetList.length;
+  const oldIndexInTarget = sourceList.indexOf(draggedGroupId);
+  const adjustedIndex =
+    oldIndexInTarget !== -1 && oldIndexInTarget < rawIndex ? rawIndex - 1 : rawIndex;
+  const clampedIndex = Math.max(0, Math.min(targetList.length, adjustedIndex));
+
+  targetList.splice(clampedIndex, 0, draggedGroupId);
+
+  return {
+    mainGroupIds: nextMain,
+    libraryGroupIds: nextLibrary,
+  };
+}
+
+export function loadDrillingSystemsLayoutFromStorage(): DrillingSystemsLayout | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(DRILLING_SYSTEMS_LAYOUT_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+    const obj = parsed as Record<string, unknown>;
+    if (!Array.isArray(obj.mainGroupIds) || !Array.isArray(obj.libraryGroupIds)) return null;
+    return {
+      mainGroupIds: obj.mainGroupIds.filter((id): id is string => typeof id === 'string'),
+      libraryGroupIds: obj.libraryGroupIds.filter((id): id is string => typeof id === 'string'),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function saveDrillingSystemsLayoutToStorage(layout: DrillingSystemsLayout | null): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (!layout) {
+      window.localStorage.removeItem(DRILLING_SYSTEMS_LAYOUT_STORAGE_KEY);
+    } else {
+      window.localStorage.setItem(DRILLING_SYSTEMS_LAYOUT_STORAGE_KEY, JSON.stringify(layout));
+    }
+  } catch {
+    // Ignore storage quota errors gracefully
+  }
+}
+
+export function getKitCompatibilityLabel(
+  kit: DrillingKit,
+  _customImplants: CustomImplantSystem[] = [],
+): string {
+  if (kit.kind === 'pilot') return 'Tous implants';
+  if (kit.implantBrandName && kit.implantModelName) {
+    return `${kit.implantBrandName} · ${kit.implantModelName}`;
+  }
+  return kit.name;
 }
 
 export interface CustomImplantSystem {
@@ -1582,6 +2208,19 @@ export const FACTORY_IMPLANT_MODELS: CustomImplantSystem[] = [
     length: 10.0,
     usageCount: 20,
     lastUsedAt: '2026-11-14T00:00:00.000Z',
+    isFactory: true,
+  },
+  {
+    id: 'factory-implant-mis-mguide',
+    brand: 'MIS (Dentsply Sirona)',
+    model: 'C1 / V3 / SEVEN',
+    name: 'MIS (Dentsply Sirona) C1 / V3 / SEVEN',
+    diametersMm: [...MIS_MGUIDE_IMPLANT_DIAMETERS],
+    lengthsMm: [...MIS_MGUIDE_IMPLANT_LENGTHS],
+    diameter: 4.2,
+    length: 10.0,
+    usageCount: 15,
+    lastUsedAt: '2026-11-13T00:00:00.000Z',
     isFactory: true,
   },
 ];
@@ -1657,6 +2296,16 @@ export function sortImplantModelsByUsage(models: CustomImplantSystem[]): CustomI
 
 export const CUSTOM_IMPLANTS_STORAGE_KEY = 'orthoguide_custom_implants_v1';
 
+function isRemovedKontactSN(id: string, brand: string, model: string, name: string): boolean {
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const candidates = [norm(id), norm(model), norm(name), norm(`${brand} ${model}`)];
+  return candidates.some((c) => /\b[kc]ontact\s+[sn]\b/.test(c));
+}
+
+export function filterLegacyKontactSNModels(models: CustomImplantSystem[]): CustomImplantSystem[] {
+  return models.filter((m) => !isRemovedKontactSN(m.id, m.brand, m.model, m.name));
+}
+
 export function loadCustomImplantSystemsFromStorage(): CustomImplantSystem[] {
   if (typeof window === 'undefined') return [...FACTORY_IMPLANT_MODELS];
   try {
@@ -1666,6 +2315,7 @@ export function loadCustomImplantSystemsFromStorage(): CustomImplantSystem[] {
     if (!Array.isArray(parsed)) return [...FACTORY_IMPLANT_MODELS];
 
     const byId = new Map<string, CustomImplantSystem>();
+    let removedAnyLegacy = false;
     for (const item of parsed) {
       if (!item || typeof item !== 'object') continue;
       const rec = item as Record<string, unknown>;
@@ -1680,6 +2330,10 @@ export function loadCustomImplantSystemsFromStorage(): CustomImplantSystem[] {
         typeof rec.model === 'string' && rec.model.trim().length > 0
           ? rec.model.trim()
           : factorySeed?.model ?? (legacyName.split(/\s+/).slice(1).join(' ') || 'Standard');
+      if (!factorySeed && isRemovedKontactSN(id, brand, model, legacyName)) {
+        removedAnyLegacy = true;
+        continue;
+      }
       const fallbackDia =
         typeof rec.diameter === 'number' && Number.isFinite(rec.diameter)
           ? clamp(rec.diameter, 2.0, 8.0)
@@ -1729,7 +2383,11 @@ export function loadCustomImplantSystemsFromStorage(): CustomImplantSystem[] {
       }
     }
 
-    return Array.from(byId.values());
+    const result = Array.from(byId.values());
+    if (removedAnyLegacy) {
+      saveCustomImplantSystemsToStorage(result);
+    }
+    return result;
   } catch {
     return [...FACTORY_IMPLANT_MODELS];
   }
@@ -1743,5 +2401,22 @@ export function saveCustomImplantSystemsToStorage(systems: CustomImplantSystem[]
     // Ignore storage quota errors
   }
 }
+
+export function computeVerticalSliderValue(
+  startValue: number,
+  deltaY: number,
+  pxPerMm: number,
+  min: number,
+  max: number,
+  step: number,
+  invertY = false,
+): number {
+  const safePxPerMm = Math.max(1, pxPerMm);
+  const signedDelta = invertY ? deltaY : -deltaY;
+  const raw = startValue + signedDelta / safePxPerMm;
+  const snapped = Math.round(raw / step) * step;
+  return clamp(roundTo(snapped, 2), min, max);
+}
+
 
 

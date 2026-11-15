@@ -9,10 +9,12 @@ import {
   GLOBAL_D_PILOT_DRILL_LENGTHS,
   computeImplantGeometry,
   computePilotComparison,
+  computeVerticalSliderValue,
   createImplantLibraryEntry,
   getDefaultParamPatch,
   getElementHighlightConfig,
   getGuidedDrillOptions,
+  groupDrillingKitsBySystem,
   groupImplantModelsByBrand,
   matchGuidedDrillToImplant,
   pickOptimalGuidedOffset,
@@ -21,19 +23,22 @@ import {
   sortKitsByUsage,
 } from './implantGeometry';
 
-test('Biotech sleepless kit defaults to optimal achievable drill offset without pending suggestions', () => {
+test('Biotech tubeless kit defaults to 12.0 mm offset without pending suggestions', () => {
   const geom = computeImplantGeometry(DEFAULT_SIMULATION_PARAMS, FACTORY_DRILLING_KITS);
 
-  assert.equal(geom.offsetCao, 10.0);
-  assert.equal(geom.drillUsefulLength, 20.0);
-  assert.equal(geom.matchedGuidedDrillLengthMm, 8.0);
-  assert.equal(geom.drillMarking, 'Ø4.2 · 8 mm');
-  assert.equal(geom.freeSpaceUnderGuide, 3.5);
+  assert.equal(geom.offsetCao, 12.0);
+  assert.equal(geom.drillUsefulLength, 22.0);
+  assert.equal(geom.matchedGuidedDrillLengthMm, 10.0);
+  assert.equal(geom.drillMarking, 'Ø4.2 · 10 mm');
+  assert.equal(geom.freeSpaceUnderGuide, 5.5);
   assert.equal(geom.surgicalGuideOffsetMm, 0.25);
   assert.equal(geom.guideTubeExtension, 'gingiva');
   assert.equal(geom.suggestion, null);
+  assert.equal(FACTORY_DRILLING_KITS[0].factoryDefaults.offsetMm, 12.0);
+  assert.equal(FACTORY_DRILLING_KITS[0].userDefaults.offsetMm, 12.0);
   assert.equal(FACTORY_DRILLING_KITS[0].factoryDefaults.surgicalGuideOffsetMm, 0.25);
   assert.equal(FACTORY_DRILLING_KITS[1].factoryDefaults.surgicalGuideOffsetMm, 0.25);
+  assert.deepEqual(BIOTECH_GUIDED_DRILL_LENGTHS, [6.0, 8.0, 10.0, 12.0, 14.0, 16.0]);
   const boneGeom = computeImplantGeometry(
     { ...DEFAULT_SIMULATION_PARAMS, guideTubeExtension: 'bone' },
     FACTORY_DRILLING_KITS,
@@ -41,7 +46,7 @@ test('Biotech sleepless kit defaults to optimal achievable drill offset without 
   assert.equal(boneGeom.guideTubeExtension, 'bone');
   assert.equal(boneGeom.blueSkyPlan.guideOffsetMm, geom.blueSkyPlan.guideOffsetMm);
   assert.equal(geom.safety.status, 'optimal');
-  assert.equal(geom.blueSkyPlan.guideOffsetMm, 10.0);
+  assert.equal(geom.blueSkyPlan.guideOffsetMm, 12.0);
   assert.equal(geom.blueSkyPlan.guideHoleDiameterMm, 5.15);
   assert.equal(geom.blueSkyPlan.sleeveHeightMm, 4.0);
   // Drill adapts automatically to Ø 4.2 implant while remaining visibly narrower than implant
@@ -69,9 +74,8 @@ test('Biotech Mastertube above guide subtracts 0.5 mm sleeve lip; flush seating 
   assert.equal(above.blueSkyPlan.guideOffsetMm, 11.5);
   assert.equal(above.blueSkyPlan.guideHoleDiameterMm, 5.85);
   assert.equal(above.yResinGuideTop - above.yGuideTop, 0.5);
-  // On 10 mm implant with [8, 10, 12] drills calibrated at 12 mm, 12.0 mm offset uses the 10 mm drill
-  // and proposes 10.0 mm using the shorter 8 mm drill (never an unachievable 9.0 mm offset)
-  assert.equal(above.suggestion?.patch.offsetOverride, 10.0);
+  // With sleeve (Mastertube), shortest safe drill from [6..16] suggests 8.0 mm
+  assert.equal(above.suggestion?.patch.offsetOverride, 8.0);
 
   const optimalSleeve = computeImplantGeometry(
     {
@@ -93,7 +97,7 @@ test('Biotech Mastertube above guide subtracts 0.5 mm sleeve lip; flush seating 
     },
     FACTORY_DRILLING_KITS,
   );
-  assert.equal(optimalSleeve.offsetCao, 10.0);
+  assert.equal(optimalSleeve.offsetCao, 8.0);
   assert.equal(optimalSleeve.suggestion, null);
 
   const flush = computeImplantGeometry(
@@ -116,18 +120,21 @@ test('Biotech Mastertube above guide subtracts 0.5 mm sleeve lip; flush seating 
 });
 
 test('Guided kit suggestions strictly stay within physically available drill lengths', () => {
-  // 8 mm implant with Biotech [8, 10, 12] drills calibrated at 12 mm -> physical drills [20, 22, 24] -> offsets [12, 14, 16]
+  // 8 mm implant with AtlaSurgery II [6, 8, 10, 12, 14, 16] drills calibrated at 12 mm -> offsets [10..20]
   const optionsL8 = getGuidedDrillOptions(8.0, 12.0, BIOTECH_GUIDED_DRILL_LENGTHS, 0.5, 2.0, 4.0);
   assert.deepEqual(
     optionsL8.map((o) => o.offsetMm),
-    [12.0, 14.0, 16.0],
+    [10.0, 12.0, 14.0, 16.0, 18.0, 20.0],
   );
-  assert.equal(
-    pickOptimalGuidedOffset(0.5, 2.0, 4.0, false, 'factory-biotech-kontact', 8.0, 12.0, BIOTECH_GUIDED_DRILL_LENGTHS),
-    12.0,
-  );
+  // In tubeless mode (hasSleeve = false), nominal offset stays 12.0 mm across all implant lengths when clinically safe
+  for (const impLen of BIOTECH_GUIDED_DRILL_LENGTHS) {
+    assert.equal(
+      pickOptimalGuidedOffset(0.5, 2.0, 4.0, false, 'factory-biotech-kontact', impLen, 12.0, BIOTECH_GUIDED_DRILL_LENGTHS),
+      12.0,
+    );
+  }
 
-  // At 12.0 mm on L8 implant, no shorter drill than 8 mm exists -> Optimal, no suggestion
+  // At 12.0 mm nominal offset in tubeless mode -> Optimal, no suggestion
   const l8Optimal = computeImplantGeometry(
     {
       ...DEFAULT_SIMULATION_PARAMS,
@@ -140,19 +147,19 @@ test('Guided kit suggestions strictly stay within physically available drill len
   assert.equal(l8Optimal.suggestion, null);
   assert.equal(l8Optimal.matchedGuidedDrillLengthMm, 8.0);
 
-  // At 14.0 mm on L8 implant (using 10 mm drill), suggestion proposes 12.0 mm (using 8 mm drill)
+  // Oversized offset (16.0 mm) on L8 implant proposes returning to nominal 12.0 mm (using 8 mm drill)
   const l8Oversized = computeImplantGeometry(
     {
       ...DEFAULT_SIMULATION_PARAMS,
       implantLength: 8.0,
-      offsetOverride: 14.0,
+      offsetOverride: 16.0,
     },
     FACTORY_DRILLING_KITS,
   );
-  assert.equal(l8Oversized.matchedGuidedDrillLengthMm, 10.0);
+  assert.equal(l8Oversized.matchedGuidedDrillLengthMm, 12.0);
   assert.equal(l8Oversized.suggestion?.patch.offsetOverride, 12.0);
 
-  // 12 mm implant -> offsets [8, 10, 12]; optimal is 8.0 mm (8 mm drill, 1.5 mm free space)
+  // 12 mm implant in tubeless mode -> nominal 12.0 mm (12 mm drill, Optimal)
   const l12Optimal = computeImplantGeometry(
     {
       ...DEFAULT_SIMULATION_PARAMS,
@@ -161,22 +168,22 @@ test('Guided kit suggestions strictly stay within physically available drill len
     },
     FACTORY_DRILLING_KITS,
   );
-  assert.equal(l12Optimal.offsetCao, 8.0);
+  assert.equal(l12Optimal.offsetCao, 12.0);
   assert.equal(l12Optimal.suggestion, null);
 
-  // Thick gingiva (4.5 mm) on L10 makes 10.0 mm offset have < 1.5 mm clearance -> suggests 12.0 mm (10 mm drill)
+  // Very thick gingiva (6.5 mm) + 1.0 mm subcrestal on L10 makes 12.0 mm offset have < 1.5 mm clearance -> suggests 14.0 mm (12 mm drill)
   const thickGingiva = computeImplantGeometry(
     {
       ...DEFAULT_SIMULATION_PARAMS,
       implantLength: 10.0,
-      gingivaThickness: 4.5,
-      subcrestalDepth: 0.5,
+      gingivaThickness: 6.5,
+      subcrestalDepth: 1.0,
       guideHeight: 4.0,
-      offsetOverride: 10.0,
+      offsetOverride: 12.0,
     },
     FACTORY_DRILLING_KITS,
   );
-  assert.equal(thickGingiva.suggestion?.patch.offsetOverride, 12.0);
+  assert.equal(thickGingiva.suggestion?.patch.offsetOverride, 14.0);
 
   // Custom guided kit with only one drill [10.0] calibrated at 10.0 mm never suggests another offset
   const singleDrillKit: DrillingKit = {
@@ -284,8 +291,8 @@ test('pickOptimalPilotLength selects smallest clinically usable drill and sugges
   }
 });
 
-test('Biotech guided drills match 8, 10, 12 mm lengths and clinical suggestion proposes optimal offset when oversized', () => {
-  const matched8 = matchGuidedDrillToImplant(3.6, 8.0, [8, 10, 12]);
+test('Biotech guided drills match 6–16 mm lengths and clinical suggestion proposes nominal 12.0 mm offset when oversized', () => {
+  const matched8 = matchGuidedDrillToImplant(3.6, 8.0, BIOTECH_GUIDED_DRILL_LENGTHS);
   assert.equal(matched8.matchedLengthMm, 8.0);
   assert.equal(matched8.spec.ringName, 'Magenta');
 
@@ -302,7 +309,7 @@ test('Biotech guided drills match 8, 10, 12 mm lengths and clinical suggestion p
   );
 
   assert.ok(geomLong.suggestion !== null);
-  assert.equal(geomLong.suggestion!.patch.offsetOverride, 10.0);
+  assert.equal(geomLong.suggestion!.patch.offsetOverride, 12.0);
 });
 
 test('Custom system drill-to-implant diameter and length correlation resolves accurately', () => {
@@ -333,8 +340,8 @@ test('Pilot comparator evaluates all 6 official Global D pilot lengths and sortK
     FACTORY_DRILLING_KITS[0],
   ]);
   assert.equal(sorted[0].id, 'factory-globald-pilot');
-  assert.equal(FACTORY_DRILLING_KITS[0].name, 'Forage guidé Biotech Kontact');
-  assert.equal(FACTORY_DRILLING_KITS[1].name, 'Foret pilote Global D');
+  assert.equal(FACTORY_DRILLING_KITS[0].name, 'AtlaSurgery 2 (Biotech Dental)');
+  assert.equal(FACTORY_DRILLING_KITS[1].name, 'G20 (Global D)');
 });
 
 test('Global D official chart pairs yield exact 10.0 mm BSP guide offset with 0.5 mm sleeve lip', () => {
@@ -385,30 +392,30 @@ test('getElementHighlightConfig maps clickable 2D elements to correct drawers an
   assert.equal(getElementHighlightConfig(null), null);
 
   const implantCfg = getElementHighlightConfig('implant');
-  assert.equal(implantCfg?.openDrawer, null);
+  assert.equal(implantCfg?.openDrawer, 2);
   assert.deepEqual(implantCfg?.params, ['implantDiameter', 'implantLength']);
 
   const gingivaCfg = getElementHighlightConfig('gingiva');
-  assert.equal(gingivaCfg?.openDrawer, 3);
+  assert.equal(gingivaCfg?.openDrawer, 4);
   assert.deepEqual(gingivaCfg?.params, ['gingivaThickness']);
 
   const subcrestalCfg = getElementHighlightConfig('subcrestal');
-  assert.equal(subcrestalCfg?.openDrawer, 3);
+  assert.equal(subcrestalCfg?.openDrawer, 2);
   assert.deepEqual(subcrestalCfg?.params, ['subcrestalDepth']);
 
   const guideCfg = getElementHighlightConfig('surgical_guide');
-  assert.equal(guideCfg?.openDrawer, 4);
+  assert.equal(guideCfg?.openDrawer, 3);
   assert.ok(guideCfg?.params.includes('surgicalGuideOffset'));
   assert.ok(guideCfg?.params.includes('guideTubeExtension'));
   assert.ok(guideCfg?.params.includes('printingClearance'));
   assert.ok(guideCfg?.params.includes('bspPanel'));
 
   const sleeveCfg = getElementHighlightConfig('sleeve');
-  assert.equal(sleeveCfg?.openDrawer, 4);
+  assert.equal(sleeveCfg?.openDrawer, 3);
   assert.ok(sleeveCfg?.params.includes('sleeve'));
 
   const drillCfg = getElementHighlightConfig('drill');
-  assert.equal(drillCfg?.openDrawer, null);
+  assert.equal(drillCfg?.openDrawer, 2);
   assert.ok(drillCfg?.params.includes('offsetCao'));
   assert.ok(drillCfg?.params.includes('drillUsefulLength'));
 
@@ -440,17 +447,324 @@ test('Implant library structures entries by brand/model/dimensions and sorts Top
   };
 
   const sorted = sortImplantModelsByUsage([anthogyr, ...FACTORY_IMPLANT_MODELS, nobel]);
-  assert.equal(sorted.length, 4);
+  assert.equal(sorted.length, 5);
   assert.deepEqual(
     sorted.slice(0, 3).map((m) => m.id),
     ['imp-nobel', 'factory-implant-biotech-kontact', 'factory-implant-globald-inkone'],
   );
 
   const groupedExtra = groupImplantModelsByBrand(sorted.slice(3));
-  assert.equal(groupedExtra.length, 1);
-  assert.equal(groupedExtra[0].brand, 'Anthogyr');
-  assert.equal(groupedExtra[0].models[0].model, 'Axiom X3');
+  assert.equal(groupedExtra.length, 2);
+  assert.equal(groupedExtra[0].brand, 'MIS (Dentsply Sirona)');
+  assert.equal(groupedExtra[0].models[0].model, 'C1 / V3 / SEVEN');
+  assert.equal(groupedExtra[1].brand, 'Anthogyr');
+  assert.equal(groupedExtra[1].models[0].model, 'Axiom X3');
 });
+
+test('computeVerticalSliderValue maps vertical drag up/down with step quantization and clamping', () => {
+  // Dragging UP (negative deltaY) increases value; dragging DOWN (positive deltaY) decreases value
+  assert.equal(computeVerticalSliderValue(2.0, -20, 20, 0.5, 6.0, 0.1), 3.0);
+  assert.equal(computeVerticalSliderValue(2.0, 10, 20, 0.5, 6.0, 0.1), 1.5);
+  // Clamping at min & max
+  assert.equal(computeVerticalSliderValue(2.0, 200, 20, 0.5, 6.0, 0.1), 0.5);
+  assert.equal(computeVerticalSliderValue(2.0, -300, 20, 0.5, 6.0, 0.1), 6.0);
+  // Step quantization (0.5 mm step)
+  assert.equal(computeVerticalSliderValue(10.0, -9, 12, 4.0, 20.0, 0.5), 11.0);
+  assert.equal(computeVerticalSliderValue(10.0, 5, 12, 4.0, 20.0, 0.5), 9.5);
+  // Inverted Y (for downward-extending dimensions: guideHeight, subcrestalDepth, implantLength)
+  assert.equal(computeVerticalSliderValue(4.0, 20, 20, 1.5, 8.0, 0.1, true), 5.0);
+  assert.equal(computeVerticalSliderValue(4.0, -20, 20, 1.5, 8.0, 0.1, true), 3.0);
+  assert.equal(computeVerticalSliderValue(10.0, 28, 14, 6.0, 16.0, 0.5, true), 12.0);
+});
+
+test('getModifiedDefaultItems detects shifted defaults such as surgicalGuideOffset and reverts cleanly', async () => {
+  const { getModifiedDefaultItems, getRevertDefaultsPatch, snapshotFromParams } = await import('./implantGeometry');
+  const kit = FACTORY_DRILLING_KITS[0];
+  const baseParams = {
+    ...DEFAULT_SIMULATION_PARAMS,
+    activeKitId: kit.id,
+    hasSleeve: kit.userDefaults.hasSleeve,
+    guideHeight: kit.userDefaults.guidingHeightMm,
+    surgicalGuideOffset: kit.userDefaults.surgicalGuideOffsetMm,
+    printingClearance: kit.userDefaults.printingClearanceMm,
+  };
+  assert.deepEqual(getModifiedDefaultItems(baseParams, kit), []);
+
+  const shiftedParams = {
+    ...baseParams,
+    surgicalGuideOffset: 0.45,
+    guideTubeExtension: 'bone' as const,
+  };
+  const items = getModifiedDefaultItems(shiftedParams, kit);
+  assert.equal(items.length, 2);
+  assert.equal(items[0].key, 'surgicalGuideOffset');
+  assert.equal(items[1].key, 'guideTubeExtension');
+
+  const updatedKit = { ...kit, userDefaults: snapshotFromParams(shiftedParams, kit) };
+  assert.deepEqual(getModifiedDefaultItems(shiftedParams, updatedKit), []);
+
+  const revertPatch = getRevertDefaultsPatch(kit);
+  assert.equal(revertPatch.surgicalGuideOffset, 0.25);
+  assert.equal(revertPatch.guideTubeExtension, 'gingiva');
+});
+
+test('filterLegacyKontactSNModels removes Contact S / Contact N / Kontact S / Kontact N while keeping Biotech Kontact', async () => {
+  const { filterLegacyKontactSNModels } = await import('./implantGeometry');
+  const sample = [
+    ...FACTORY_IMPLANT_MODELS,
+    createImplantLibraryEntry('Biotech', 'Kontact S', [3.6, 4.2], [8, 10], 'imp-ks'),
+    createImplantLibraryEntry('Biotech', 'Contact N', [3.6, 4.2], [8, 10], 'imp-cn'),
+  ];
+  const filtered = filterLegacyKontactSNModels(sample);
+  assert.deepEqual(
+    filtered.map((m) => m.name),
+    ['Biotech Kontact', 'Global D In-Kone', 'MIS (Dentsply Sirona) C1 / V3 / SEVEN'],
+  );
+});
+
+test('All factory systems default to Sans douille and MIS MGUIDE Standard & Narrow compute exact BSP tube dimensions', () => {
+  for (const kit of FACTORY_DRILLING_KITS) {
+    assert.equal(kit.factoryDefaults.hasSleeve, false, `${kit.id} factoryDefaults.hasSleeve should be false`);
+    assert.equal(kit.userDefaults.hasSleeve, false, `${kit.id} userDefaults.hasSleeve should be false`);
+    assert.equal(kit.factoryDefaults.printingClearanceMm, 0.15, `${kit.id} printingClearanceMm should be 0.15`);
+  }
+  assert.equal(DEFAULT_SIMULATION_PARAMS.hasSleeve, false);
+  assert.equal(DEFAULT_SIMULATION_PARAMS.wizardHasSleeve, false);
+
+  const misStd = FACTORY_DRILLING_KITS.find((k) => k.id === 'factory-mis-mguide');
+  const misNarrow = FACTORY_DRILLING_KITS.find((k) => k.id === 'factory-mis-mguide-narrow');
+  assert.ok(misStd, 'Missing factory-mis-mguide kit');
+  assert.ok(misNarrow, 'Missing factory-mis-mguide-narrow kit');
+
+  // Alphabetical ordering of drilling systems (regardless of usageCount) & Narrow first inside MIS
+  const groups = groupDrillingKitsBySystem([
+    { ...FACTORY_DRILLING_KITS[2], usageCount: 999 },
+    FACTORY_DRILLING_KITS[1],
+    FACTORY_DRILLING_KITS[0],
+    FACTORY_DRILLING_KITS[3],
+  ]);
+  assert.equal(groups.length, 3);
+  assert.deepEqual(
+    groups.map((g) => g.groupName),
+    ['AtlaSurgery 2 (Biotech Dental)', 'G20 (Global D)', 'MGUIDE (MIS · Dentsply Sirona)'],
+  );
+  const misGroup = groups.find((g) => g.groupId === 'mis-mguide');
+  assert.ok(misGroup, 'Missing mis-mguide system group');
+  assert.equal(misGroup.kits.length, 2);
+  assert.equal(misGroup.kits[0].id, 'factory-mis-mguide-narrow');
+  assert.equal(misGroup.kits[0].subSystemLabel, 'Narrow');
+  assert.equal(misGroup.kits[1].id, 'factory-mis-mguide');
+  assert.equal(misGroup.kits[1].subSystemLabel, 'Standard');
+
+  assert.equal(misStd.kind, 'guided');
+  assert.equal(misStd.implantBrandName, 'MIS (Dentsply Sirona)');
+  assert.equal(misStd.implantModelName, 'C1 / V3 / SEVEN (Standard)');
+  assert.equal(misStd.factoryDefaults.sleeveSeating, 'flush');
+  assert.equal(misStd.factoryDefaults.sleeveWallThicknessMm, 0.5);
+  assert.deepEqual(misStd.factoryDefaults.availableLengthsMm, [6.0, 8.0, 10.0, 11.5, 13.0, 16.0]);
+  assert.deepEqual(misStd.factoryDefaults.drillDiametersMm, [2.4, 3.2, 3.6, 4.1, 4.9]);
+  assert.deepEqual(misStd.factoryDefaults.implantDiametersMm, [3.3, 3.8, 4.2, 5.0]);
+  assert.deepEqual(misStd.factoryDefaults.implantLengthsMm, [6.0, 8.0, 10.0, 11.5, 13.0, 16.0]);
+
+  const misStdTubelessDefault = computeImplantGeometry(
+    {
+      ...DEFAULT_SIMULATION_PARAMS,
+      activeKitId: 'factory-mis-mguide',
+      implantBrand: 'mis',
+      customImplantId: 'factory-implant-mis-mguide',
+      implantDiameter: 4.2,
+      implantLength: 11.5,
+      hasSleeve: misStd.factoryDefaults.hasSleeve,
+      sleeveSeating: misStd.factoryDefaults.sleeveSeating,
+      sleeveLipThickness: misStd.factoryDefaults.sleeveLipThicknessMm,
+      sleeveWallThickness: misStd.factoryDefaults.sleeveWallThicknessMm,
+      drillToSleeveClearance: misStd.factoryDefaults.drillToSleeveClearanceMm,
+      printingClearance: misStd.factoryDefaults.printingClearanceMm,
+      guidingDiameter: misStd.factoryDefaults.guidingDiameterMm,
+      guideHeight: misStd.factoryDefaults.guidingHeightMm,
+      offsetOverride: misStd.factoryDefaults.offsetMm,
+    },
+    FACTORY_DRILLING_KITS,
+  );
+  assert.equal(misStdTubelessDefault.drillMarking, 'Ø4.1 · 11.5 mm');
+  assert.equal(misStdTubelessDefault.matchedGuidedDrillLengthMm, 11.5);
+  assert.equal(misStdTubelessDefault.blueSkyPlan.guideHoleDiameterMm, 5.6);
+  assert.equal(misStdTubelessDefault.blueSkyPlan.sleeveHeightMm, 5.0);
+  assert.equal(misStdTubelessDefault.blueSkyPlan.guideOffsetMm, 9.5);
+  assert.equal(misStdTubelessDefault.safety.status, 'optimal');
+  assert.equal(misStdTubelessDefault.suggestion, null);
+
+  const misWithSleeve = computeImplantGeometry(
+    {
+      ...DEFAULT_SIMULATION_PARAMS,
+      activeKitId: 'factory-mis-mguide',
+      implantBrand: 'mis',
+      implantDiameter: 3.3,
+      implantLength: 10.0,
+      hasSleeve: true,
+      sleeveSeating: 'flush',
+      sleeveLipThickness: 0.0,
+      sleeveWallThickness: 0.5,
+      drillToSleeveClearance: 0.1,
+      printingClearance: 0.05,
+      guidingDiameter: misStd.factoryDefaults.guidingDiameterMm,
+      guideHeight: misStd.factoryDefaults.guidingHeightMm,
+      offsetOverride: misStd.factoryDefaults.offsetMm,
+    },
+    FACTORY_DRILLING_KITS,
+  );
+  assert.equal(misWithSleeve.drillMarking, 'Ø3.2 · 10 mm');
+  assert.equal(misWithSleeve.blueSkyPlan.guideHoleDiameterMm, 6.6);
+  assert.equal(misWithSleeve.blueSkyPlan.sleeveHeightMm, 5.0);
+  assert.equal(misWithSleeve.blueSkyPlan.guideOffsetMm, 9.5);
+  assert.equal(misWithSleeve.safety.status, 'optimal');
+
+  // Narrow MIS sub-system: 4.10 mm tubeless by default, 5.10 mm with sleeve, H 5.0, offset 9.5, flush
+  assert.equal(misNarrow.factoryDefaults.sleeveSeating, 'flush');
+  assert.equal(misNarrow.factoryDefaults.sleeveWallThicknessMm, 0.5);
+  assert.deepEqual(misNarrow.factoryDefaults.implantDiametersMm, [3.3]);
+  assert.deepEqual(misNarrow.factoryDefaults.drillDiametersMm, [2.4, 2.8, 3.2]);
+
+  const narrowTubelessDefault = computeImplantGeometry(
+    {
+      ...DEFAULT_SIMULATION_PARAMS,
+      activeKitId: 'factory-mis-mguide-narrow',
+      implantBrand: 'mis',
+      customImplantId: 'factory-implant-mis-mguide',
+      implantDiameter: 3.3,
+      implantLength: 10.0,
+      hasSleeve: misNarrow.factoryDefaults.hasSleeve,
+      sleeveSeating: misNarrow.factoryDefaults.sleeveSeating,
+      sleeveLipThickness: misNarrow.factoryDefaults.sleeveLipThicknessMm,
+      sleeveWallThickness: misNarrow.factoryDefaults.sleeveWallThicknessMm,
+      drillToSleeveClearance: misNarrow.factoryDefaults.drillToSleeveClearanceMm,
+      printingClearance: misNarrow.factoryDefaults.printingClearanceMm,
+      guidingDiameter: misNarrow.factoryDefaults.guidingDiameterMm,
+      guideHeight: misNarrow.factoryDefaults.guidingHeightMm,
+      offsetOverride: misNarrow.factoryDefaults.offsetMm,
+    },
+    FACTORY_DRILLING_KITS,
+  );
+  assert.equal(narrowTubelessDefault.drillMarking, 'Ø3.2 · 10 mm');
+  assert.equal(narrowTubelessDefault.blueSkyPlan.guideHoleDiameterMm, 4.1);
+  assert.equal(narrowTubelessDefault.blueSkyPlan.sleeveHeightMm, 5.0);
+  assert.equal(narrowTubelessDefault.blueSkyPlan.guideOffsetMm, 9.5);
+  assert.equal(narrowTubelessDefault.safety.status, 'optimal');
+  assert.equal(narrowTubelessDefault.suggestion, null);
+
+  const narrowWithSleeve = computeImplantGeometry(
+    {
+      ...DEFAULT_SIMULATION_PARAMS,
+      activeKitId: 'factory-mis-mguide-narrow',
+      implantBrand: 'mis',
+      implantDiameter: 3.3,
+      implantLength: 10.0,
+      hasSleeve: true,
+      sleeveSeating: 'flush',
+      sleeveLipThickness: 0.0,
+      sleeveWallThickness: 0.5,
+      drillToSleeveClearance: 0.1,
+      printingClearance: 0.05,
+      guidingDiameter: misNarrow.factoryDefaults.guidingDiameterMm,
+      guideHeight: misNarrow.factoryDefaults.guidingHeightMm,
+      offsetOverride: misNarrow.factoryDefaults.offsetMm,
+    },
+    FACTORY_DRILLING_KITS,
+  );
+  assert.equal(narrowWithSleeve.blueSkyPlan.guideHoleDiameterMm, 5.1);
+  assert.equal(narrowWithSleeve.blueSkyPlan.sleeveHeightMm, 5.0);
+  assert.equal(narrowWithSleeve.blueSkyPlan.guideOffsetMm, 9.5);
+  assert.equal(narrowWithSleeve.safety.status, 'optimal');
+});
+
+test('resolveDrillingSystemsLayout shows 3 alphabetical groups by default and reorderDrillingSystemGroups persists personal order, archive, and unarchive', async () => {
+  const { resolveDrillingSystemsLayout, reorderDrillingSystemGroups } = await import('./implantGeometry');
+
+  const fourthKit: DrillingKit = {
+    ...FACTORY_DRILLING_KITS[0],
+    id: 'custom-straumann',
+    name: 'Straumann BLX',
+    systemGroupId: 'custom-straumann',
+    systemGroupName: 'Straumann BLX',
+    isFactory: false,
+  };
+  const fourKits = [...FACTORY_DRILLING_KITS, fourthKit];
+
+  // Default layout: 3 alphabetical groups shown in main, 4th placed in Bibliothèque de systèmes de forage
+  const defaultResolved = resolveDrillingSystemsLayout(fourKits, null);
+  assert.deepEqual(
+    defaultResolved.mainGroups.map((g) => g.groupId),
+    ['biotech-kontact', 'globald-pilot', 'mis-mguide'],
+  );
+  assert.deepEqual(
+    defaultResolved.libraryGroups.map((g) => g.groupId),
+    ['custom-straumann'],
+  );
+
+  // Drag item 0 (Biotech) down past item 2 (MIS) -> ['globald-pilot', 'mis-mguide', 'biotech-kontact']
+  const reorderedDown = reorderDrillingSystemGroups(
+    defaultResolved.mainGroups.map((g) => g.groupId),
+    defaultResolved.libraryGroups.map((g) => g.groupId),
+    'biotech-kontact',
+    'main',
+    3,
+  );
+  assert.deepEqual(reorderedDown.mainGroupIds, [
+    'globald-pilot',
+    'mis-mguide',
+    'biotech-kontact',
+  ]);
+
+  // Drag MIS up to index 0 -> ['mis-mguide', 'globald-pilot', 'biotech-kontact']
+  const reorderedUp = reorderDrillingSystemGroups(
+    reorderedDown.mainGroupIds,
+    reorderedDown.libraryGroupIds,
+    'mis-mguide',
+    'main',
+    0,
+  );
+  assert.deepEqual(reorderedUp.mainGroupIds, [
+    'mis-mguide',
+    'globald-pilot',
+    'biotech-kontact',
+  ]);
+
+  // Archive Biotech into Bibliothèque de systèmes de forage -> main has 2, library has 2
+  const archived = reorderDrillingSystemGroups(
+    reorderedUp.mainGroupIds,
+    reorderedUp.libraryGroupIds,
+    'biotech-kontact',
+    'library',
+  );
+  assert.deepEqual(archived.mainGroupIds, ['mis-mguide', 'globald-pilot']);
+  assert.deepEqual(archived.libraryGroupIds, ['custom-straumann', 'biotech-kontact']);
+
+  const resolvedAfterArchive = resolveDrillingSystemsLayout(fourKits, archived);
+  assert.deepEqual(
+    resolvedAfterArchive.mainGroups.map((g) => g.groupId),
+    ['mis-mguide', 'globald-pilot'],
+  );
+  assert.deepEqual(
+    resolvedAfterArchive.libraryGroups.map((g) => g.groupId),
+    ['custom-straumann', 'biotech-kontact'],
+  );
+
+  // Drag Straumann out of library into main at index 1 -> main has 3, library has 1
+  const unarchived = reorderDrillingSystemGroups(
+    archived.mainGroupIds,
+    archived.libraryGroupIds,
+    'custom-straumann',
+    'main',
+    1,
+  );
+  assert.deepEqual(unarchived.mainGroupIds, [
+    'mis-mguide',
+    'custom-straumann',
+    'globald-pilot',
+  ]);
+  assert.deepEqual(unarchived.libraryGroupIds, ['biotech-kontact']);
+});
+
 
 
 

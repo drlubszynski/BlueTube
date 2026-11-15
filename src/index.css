@@ -142,7 +142,6 @@
 }
 
 .bsp-tube-panel {
-  position: relative;
   overflow: hidden;
   isolation: isolate;
   background-color: var(--bsp-tube-bg);
@@ -177,7 +176,7 @@
   animation: bspTubeLightWave 8s linear infinite;
 }
 
-.bsp-tube-panel > * {
+.bsp-tube-panel > :not([data-resize-edge]) {
   position: relative;
   z-index: 1;
 }
@@ -344,6 +343,20 @@
 [data-bsp-theme='dark'] svg[data-testid='caliper-stage-svg'] {
   background-color: #f8fafc;
   border-radius: 0.5rem;
+}
+
+.surgical-cad-grid,
+[data-bsp-theme='dark'] .surgical-cad-grid {
+  background-color: #ffffff;
+  background-image:
+    linear-gradient(to right, #e2e8f0 0.75px, transparent 0.75px),
+    linear-gradient(to bottom, #e2e8f0 0.75px, transparent 0.75px);
+  background-size: 22px 22px;
+}
+
+[data-bsp-theme='dark'] .surgical-cad-grid svg[data-testid='surgical-svg'] {
+  background-color: transparent;
+  border-radius: 0;
 }
 
 .font-mono-tabular {

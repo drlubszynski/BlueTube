@@ -16,6 +16,7 @@ import {
   SimulationParams,
   clamp,
   groupImplantModelsByBrand,
+  isMisMguideKitId,
   pickOptimalPilotLength,
   sortImplantModelsByUsage,
 } from '../utils/implantGeometry';
@@ -60,33 +61,39 @@ export function ImplantSelectionSection({
     customImplants.find((m) => m.id === params.customImplantId) ??
     (params.implantBrand === 'kontact'
       ? customImplants.find((m) => m.id === 'factory-implant-biotech-kontact')
-      : params.implantBrand === 'globald'
-        ? customImplants.find((m) => m.id === 'factory-implant-globald-inkone')
-        : customImplants.find((m) => m.name === params.customImplantName)) ??
+      : params.implantBrand === 'mis'
+        ? customImplants.find((m) => m.id === 'factory-implant-mis-mguide')
+        : params.implantBrand === 'globald'
+          ? customImplants.find((m) => m.id === 'factory-implant-globald-inkone')
+          : customImplants.find((m) => m.name === params.customImplantName)) ??
     customImplants[0];
 
   const activeDiameters =
-    activeKit.kind === 'guided' && !activeKit.isFactory
+    activeKit.kind === 'guided' && params.implantBrand !== 'custom'
       ? activeKit.userDefaults.implantDiametersMm
-      : activeKit.kind === 'guided' && params.implantBrand === 'kontact'
+      : activeKit.kind === 'guided' && activeKit.id === 'factory-biotech-kontact' && params.implantBrand === 'kontact'
         ? BIOTECH_KONTACT_DIAMETERS
         : activeLibraryModel?.diametersMm ?? GLOBAL_D_IMPLANT_DIAMETERS;
 
   const activeLengths =
-    activeKit.kind === 'guided' && !activeKit.isFactory
+    activeKit.kind === 'guided' && params.implantBrand !== 'custom'
       ? activeKit.userDefaults.implantLengthsMm
-      : activeKit.kind === 'guided' && params.implantBrand === 'kontact'
+      : activeKit.kind === 'guided' && activeKit.id === 'factory-biotech-kontact' && params.implantBrand === 'kontact'
         ? BIOTECH_KONTACT_LENGTHS
         : activeLibraryModel?.lengthsMm ?? GLOBAL_D_IMPLANT_LENGTHS;
 
   const activeModelLabel =
-    activeKit.kind === 'guided' && !activeKit.isFactory
-      ? activeKit.name
+    activeKit.kind === 'guided' && params.implantBrand !== 'custom'
+      ? activeKit.implantBrandName && activeKit.implantModelName
+        ? `${activeKit.implantBrandName} ${activeKit.implantModelName}`
+        : activeKit.name
       : activeLibraryModel
         ? `${activeLibraryModel.brand} ${activeLibraryModel.model}`
         : params.implantBrand === 'globald'
           ? 'Global D In-Kone'
-          : 'Biotech Kontact';
+          : params.implantBrand === 'mis'
+            ? 'MIS (Dentsply Sirona) C1 / V3 / SEVEN'
+            : 'Biotech Kontact';
 
   const handleImplantLengthChange = (nextLen: number) => {
     const patch: Partial<SimulationParams> = { implantLength: nextLen };
@@ -165,6 +172,12 @@ export function ImplantSelectionSection({
     );
   };
 
+  const [activeSlider, setActiveSlider] = useState<'diameter' | 'length' | null>(null);
+  const clampedDia = clamp(params.implantDiameter, 2.0, 8.0);
+  const diaRatio = clamp((clampedDia - 2.0) / (8.0 - 2.0), 0, 1);
+  const clampedLen = clamp(params.implantLength, 4.0, 20.0);
+  const lenRatio = clamp((clampedLen - 4.0) / (20.0 - 4.0), 0, 1);
+
   return (
     <div className="space-y-2.5">
       {/* Library Mode Header: Synchronized across Mode assisté & Mode avancé */}
@@ -202,7 +215,11 @@ export function ImplantSelectionSection({
         >
           <div
             className={
-              isAssisted ? 'grid grid-cols-1 gap-2.5 md:grid-cols-3' : 'space-y-1'
+              isAssisted
+                ? topThreeImplants.length === 2
+                  ? 'grid grid-cols-1 gap-2.5 md:grid-cols-2'
+                  : 'grid grid-cols-1 gap-2.5 md:grid-cols-3'
+                : 'space-y-1'
             }
           >
             {topThreeImplants.map(renderModelCard)}
@@ -267,13 +284,21 @@ export function ImplantSelectionSection({
               onClick={() =>
                 onSelectImplant({
                   implantBrand:
-                    activeKit.id === 'factory-biotech-kontact' ? 'kontact' : 'custom',
+                    activeKit.id === 'factory-biotech-kontact'
+                      ? 'kontact'
+                      : isMisMguideKitId(activeKit.id)
+                        ? 'mis'
+                        : 'custom',
                   customImplantId:
                     activeKit.id === 'factory-biotech-kontact'
                       ? 'factory-implant-biotech-kontact'
-                      : undefined,
+                      : isMisMguideKitId(activeKit.id)
+                        ? 'factory-implant-mis-mguide'
+                        : undefined,
                   customImplantName:
-                    activeKit.id === 'factory-biotech-kontact' ? undefined : activeKit.name,
+                    activeKit.id === 'factory-biotech-kontact' || isMisMguideKitId(activeKit.id)
+                      ? undefined
+                      : activeKit.name,
                   implantDiameter: activeKit.userDefaults.implantDiametersMm[0] ?? 4.2,
                   implantLength: activeKit.userDefaults.implantLengthsMm[0] ?? 10.0,
                 })
@@ -285,98 +310,155 @@ export function ImplantSelectionSection({
           </div>
         )}
 
-      {/* Diameters: Preset Buttons + Synced Continuous Slider (2.0–8.0 mm) */}
-      <div className={diameterHighlightClass}>
-        <div className="mb-1 flex items-center justify-between text-[11px]">
-          <label
-            htmlFor={`${isAssisted ? 'onb-' : ''}implant-diameter-slider`}
-            className="truncate font-semibold text-slate-700"
-          >
-            Diamètre {activeModelLabel} (mm)
-          </label>
-          <span className="font-mono-tabular shrink-0 font-bold text-slate-900">
-            Ø{params.implantDiameter.toFixed(1)} mm
-          </span>
-        </div>
-        <div
-          className={`grid gap-1 ${
-            activeDiameters.length <= 3
-              ? 'grid-cols-3'
-              : activeDiameters.length === 4
-                ? 'grid-cols-4'
-                : 'grid-cols-5'
-          }`}
-        >
-          {activeDiameters.map((dia) => (
-            <button
-              key={dia}
-              type="button"
-              onClick={() => onSelectImplant({ implantDiameter: dia })}
-              className={`font-mono-tabular rounded-md border py-1 text-[11px] font-semibold transition-colors ${
-                Math.abs(params.implantDiameter - dia) < 0.05
-                  ? 'border-sky-600 bg-sky-600 text-white'
-                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-              }`}
+      {/* Diameters & Lengths: Preset Buttons + Synced Continuous Sliders */}
+      <div className={isAssisted ? 'grid grid-cols-1 gap-3 sm:grid-cols-2' : 'space-y-2.5'}>
+        {/* Diameters: Preset Buttons + Synced Continuous Slider (2.0–8.0 mm) */}
+        <div className={diameterHighlightClass}>
+          <div className="mb-1 flex items-center justify-between text-[11px]">
+            <label
+              htmlFor={`${isAssisted ? 'onb-' : ''}implant-diameter-slider`}
+              className="truncate font-semibold text-slate-700"
             >
-              Ø{dia.toFixed(1)}
-            </button>
-          ))}
+              Diamètre {activeModelLabel} (mm)
+            </label>
+            <span className="font-mono-tabular shrink-0 font-bold text-slate-900">
+              Ø{params.implantDiameter.toFixed(1)} mm
+            </span>
+          </div>
+          <div
+            className={`grid gap-1 ${
+              activeDiameters.length <= 3
+                ? 'grid-cols-3'
+                : activeDiameters.length === 4
+                  ? 'grid-cols-4'
+                  : 'grid-cols-5'
+            }`}
+          >
+            {activeDiameters.map((dia) => (
+              <button
+                key={dia}
+                type="button"
+                onClick={() => onSelectImplant({ implantDiameter: dia })}
+                className={`font-mono-tabular rounded-md border py-1 text-[11px] font-semibold transition-colors ${
+                  Math.abs(params.implantDiameter - dia) < 0.05
+                    ? 'border-sky-600 bg-sky-600 text-white'
+                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                Ø{dia.toFixed(1)}
+              </button>
+            ))}
+          </div>
+          <div className="mt-1.5">
+            <input
+              id={`${isAssisted ? 'onb-' : ''}implant-diameter-slider`}
+              data-testid={`${isAssisted ? 'onb-' : ''}implant-diameter-slider`}
+              type="range"
+              min={2.0}
+              max={8.0}
+              step={0.1}
+              value={clampedDia}
+              aria-label="Curseur diamètre de l'implant"
+              title="Double-cliquer pour réinitialiser par défaut"
+              onPointerDown={() => setActiveSlider('diameter')}
+              onPointerUp={() => setActiveSlider(null)}
+              onPointerCancel={() => setActiveSlider(null)}
+              onFocus={() => setActiveSlider('diameter')}
+              onBlur={() => setActiveSlider(null)}
+              onChange={(e) => onSelectImplant({ implantDiameter: parseFloat(e.target.value) })}
+              onDoubleClick={() =>
+                onSelectImplant({
+                  implantDiameter: activeDiameters.includes(4.2) ? 4.2 : (activeDiameters[0] ?? 4.2),
+                })
+              }
+              className="cad-slider block w-full"
+            />
+            <div className="relative mt-1.5 h-5 w-full" aria-hidden="true">
+              <div
+                data-testid={`${isAssisted ? 'onb-' : ''}diameter-slider-readout`}
+                style={{
+                  left: `clamp(26px, calc(${diaRatio * 100}% + ${7 - diaRatio * 14}px), calc(100% - 26px))`,
+                }}
+                className={`font-mono-tabular absolute top-0 -translate-x-1/2 whitespace-nowrap rounded border px-1.5 py-0.5 text-[10px] font-bold leading-none transition-colors ${
+                  activeSlider === 'diameter'
+                    ? 'border-sky-600 bg-sky-600 text-white shadow-xs'
+                    : 'border-sky-300 bg-sky-50 text-sky-800'
+                }`}
+              >
+                Ø{clampedDia.toFixed(1)} mm
+              </div>
+            </div>
+          </div>
         </div>
-        <input
-          id={`${isAssisted ? 'onb-' : ''}implant-diameter-slider`}
-          data-testid={`${isAssisted ? 'onb-' : ''}implant-diameter-slider`}
-          type="range"
-          min={2.0}
-          max={8.0}
-          step={0.1}
-          value={clamp(params.implantDiameter, 2.0, 8.0)}
-          aria-label="Curseur diamètre de l'implant"
-          onChange={(e) => onSelectImplant({ implantDiameter: parseFloat(e.target.value) })}
-          className="cad-slider mt-1.5 w-full"
-        />
-      </div>
 
-      {/* Lengths: Preset Buttons + Synced Continuous Slider (4.0–20.0 mm) */}
-      <div className={lengthHighlightClass}>
-        <div className="mb-1 flex items-center justify-between text-[11px]">
-          <label
-            htmlFor={`${isAssisted ? 'onb-' : ''}implant-length-slider`}
-            className="truncate font-semibold text-slate-700"
-          >
-            Longueur {activeModelLabel} (mm)
-          </label>
-          <span className="font-mono-tabular shrink-0 font-bold text-slate-900">
-            {params.implantLength.toFixed(1)} mm
-          </span>
-        </div>
-        <div className="grid grid-cols-3 gap-1">
-          {activeLengths.map((len) => (
-            <button
-              key={len}
-              type="button"
-              onClick={() => handleImplantLengthChange(len)}
-              className={`font-mono-tabular rounded-md border py-1 text-xs font-semibold transition-colors ${
-                Math.abs(params.implantLength - len) < 0.05
-                  ? 'border-sky-600 bg-sky-600 text-white'
-                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-              }`}
+        {/* Lengths: Preset Buttons + Synced Continuous Slider (4.0–20.0 mm) */}
+        <div className={lengthHighlightClass}>
+          <div className="mb-1 flex items-center justify-between text-[11px]">
+            <label
+              htmlFor={`${isAssisted ? 'onb-' : ''}implant-length-slider`}
+              className="truncate font-semibold text-slate-700"
             >
-              {Number.isInteger(len) ? `${len.toFixed(0)} mm` : `${len.toFixed(1)} mm`}
-            </button>
-          ))}
+              Longueur {activeModelLabel} (mm)
+            </label>
+            <span className="font-mono-tabular shrink-0 font-bold text-slate-900">
+              {params.implantLength.toFixed(1)} mm
+            </span>
+          </div>
+          <div className="grid grid-cols-3 gap-1">
+            {activeLengths.map((len) => (
+              <button
+                key={len}
+                type="button"
+                onClick={() => handleImplantLengthChange(len)}
+                className={`font-mono-tabular rounded-md border py-1 text-xs font-semibold transition-colors ${
+                  Math.abs(params.implantLength - len) < 0.05
+                    ? 'border-sky-600 bg-sky-600 text-white'
+                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                {Number.isInteger(len) ? `${len.toFixed(0)} mm` : `${len.toFixed(1)} mm`}
+              </button>
+            ))}
+          </div>
+          <div className="mt-1.5">
+            <input
+              id={`${isAssisted ? 'onb-' : ''}implant-length-slider`}
+              data-testid={`${isAssisted ? 'onb-' : ''}implant-length-slider`}
+              type="range"
+              min={4.0}
+              max={20.0}
+              step={0.1}
+              value={clampedLen}
+              aria-label="Curseur longueur de l'implant"
+              title="Double-cliquer pour réinitialiser par défaut"
+              onPointerDown={() => setActiveSlider('length')}
+              onPointerUp={() => setActiveSlider(null)}
+              onPointerCancel={() => setActiveSlider(null)}
+              onFocus={() => setActiveSlider('length')}
+              onBlur={() => setActiveSlider(null)}
+              onChange={(e) => handleImplantLengthChange(parseFloat(e.target.value))}
+              onDoubleClick={() =>
+                handleImplantLengthChange(activeLengths.includes(10.0) ? 10.0 : (activeLengths[0] ?? 10.0))
+              }
+              className="cad-slider block w-full"
+            />
+            <div className="relative mt-1.5 h-5 w-full" aria-hidden="true">
+              <div
+                data-testid={`${isAssisted ? 'onb-' : ''}length-slider-readout`}
+                style={{
+                  left: `clamp(26px, calc(${lenRatio * 100}% + ${7 - lenRatio * 14}px), calc(100% - 26px))`,
+                }}
+                className={`font-mono-tabular absolute top-0 -translate-x-1/2 whitespace-nowrap rounded border px-1.5 py-0.5 text-[10px] font-bold leading-none transition-colors ${
+                  activeSlider === 'length'
+                    ? 'border-sky-600 bg-sky-600 text-white shadow-xs'
+                    : 'border-sky-300 bg-sky-50 text-sky-800'
+                }`}
+              >
+                {clampedLen.toFixed(1)} mm
+              </div>
+            </div>
+          </div>
         </div>
-        <input
-          id={`${isAssisted ? 'onb-' : ''}implant-length-slider`}
-          data-testid={`${isAssisted ? 'onb-' : ''}implant-length-slider`}
-          type="range"
-          min={4.0}
-          max={20.0}
-          step={0.1}
-          value={clamp(params.implantLength, 4.0, 20.0)}
-          aria-label="Curseur longueur de l'implant"
-          onChange={(e) => handleImplantLengthChange(parseFloat(e.target.value))}
-          className="cad-slider mt-1.5 w-full"
-        />
       </div>
     </div>
   );

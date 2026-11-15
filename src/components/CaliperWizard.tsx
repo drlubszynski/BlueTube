@@ -223,7 +223,9 @@ function CaliperParamSlider({
           max={max}
           step={step}
           value={clamp(value, min, max)}
+          title="Double-cliquer pour réinitialiser par défaut"
           onChange={(e) => onChange(parseFloat(e.target.value))}
+          onDoubleClick={onReset}
           className="cad-slider flex-1"
         />
         <button
@@ -446,12 +448,12 @@ export function CaliperWizard({
 
   const handleSelectKind = (kind: 'guided' | 'pilot') => {
     const defaultLengths =
-      kind === 'pilot' ? [17.3, 19.0, 20.5, 22.0, 23.5, 25.5] : [8.0, 10.0, 12.0];
+      kind === 'pilot' ? [17.3, 19.0, 20.5, 22.0, 23.5, 25.5] : [6.0, 8.0, 10.0, 12.0, 14.0, 16.0];
     const defaultDrillDias = kind === 'pilot' ? [2.0] : [2.0, 3.0, 3.6, 4.2, 4.8];
     const defaultImplantDias =
       kind === 'pilot' ? [3.0, 3.5, 4.0, 4.5, 5.0] : [3.0, 3.6, 4.2, 4.8];
     const defaultImplantLens =
-      kind === 'pilot' ? [6.0, 8.5, 10.0, 11.5, 13.0, 15.0] : [8.0, 10.0, 12.0];
+      kind === 'pilot' ? [6.0, 8.5, 10.0, 11.5, 13.0, 15.0] : [6.0, 8.0, 10.0, 12.0, 14.0, 16.0];
 
     onChangeParams({
       wizardKind: kind,
@@ -772,7 +774,7 @@ export function CaliperWizard({
             <RippleChoiceCard
               selected={params.wizardKind === 'guided'}
               title="Forets classiques guidés"
-              subtitle="Décalage fixe · Diamètres croissants (ex. Biotech Kontact 8 / 10 / 12 mm)"
+              subtitle="Décalage fixe · Diamètres croissants (ex. Biotech Kontact 6–16 mm · décalage 12 mm)"
               caption="Sélectionner Forets guidés"
               testId="wizard-kind-guided"
               onChoose={() => handleSelectKind('guided')}
@@ -2223,9 +2225,15 @@ export function CaliperWizard({
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3">
           <button
             type="button"
-            disabled={safeIndex === 0}
-            onClick={() => goToStep(safeIndex - 1)}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+            data-testid="wizard-prev-step-btn"
+            onClick={() => {
+              if (safeIndex === 0) {
+                onCancel();
+              } else {
+                goToStep(safeIndex - 1);
+              }
+            }}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
           >
             <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
             Étape précédente

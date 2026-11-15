@@ -56,7 +56,7 @@ export function ClinicalTelemetryBar({
         aria-expanded={isOpen}
         aria-controls="clinical-telemetry-content"
         data-testid="clinical-telemetry-toggle"
-        className="flex w-full items-center justify-between gap-2 px-3.5 py-2.5 text-left transition-colors hover:bg-slate-50/80"
+        className="flex min-h-[44px] w-full items-center justify-between gap-2 px-3.5 py-2 text-left transition-colors hover:bg-slate-50/80"
       >
         <div className="flex items-center gap-2 min-w-0">
           {statusConfig.icon}

@@ -3,43 +3,33 @@ import {
   BookmarkCheck,
   ChevronDown,
   ChevronUp,
-  History,
-  MoreVertical,
-  Pencil,
-  Plus,
   RotateCcw,
-  Ruler,
-  Trash2,
-  Wrench,
 } from 'lucide-react';
 import {
-  BIOTECH_KONTACT_DIAMETERS,
-  BIOTECH_KONTACT_LENGTHS,
   BIOTECH_MASTERTUBE_OFFSETS,
   BiotechMastertubePreset,
   ComputedGeometry,
   CustomImplantSystem,
+  DEFAULT_SIMULATION_PARAMS,
   DiagramElementFocus,
   DrillingKit,
-  GLOBAL_D_IMPLANT_DIAMETERS,
-  GLOBAL_D_IMPLANT_LENGTHS,
+  DrillingSystemsLayout,
   HighlightableParamKey,
   ResettableParamKey,
   SimulationParams,
   clamp,
   getElementHighlightConfig,
-  groupImplantModelsByBrand,
-  pickOptimalPilotLength,
   roundTo,
-  sortImplantModelsByUsage,
-  sortKitsByUsage,
 } from '../utils/implantGeometry';
 import { BilingualTerm } from './BilingualTerm';
+import { DrillingSystemsSection } from './DrillingSystemsSection';
+import { ImplantSelectionSection } from './ImplantSelectionSection';
 
 interface ControlSidebarProps {
   params: SimulationParams;
   geometry: ComputedGeometry;
   kits: DrillingKit[];
+  drillingLayout: DrillingSystemsLayout | null;
   customImplants?: CustomImplantSystem[];
   highlightedElement?: DiagramElementFocus | null;
   onSelectImplant: (patch: Partial<SimulationParams>) => void;
@@ -51,11 +41,13 @@ interface ControlSidebarProps {
   onOpenFreeImplantWizard: () => void;
   onSelectKit: (kitId: string) => void;
   onSelectKitSleeve: (kitId: string, hasSleeve: boolean) => void;
+  onChangeDrillingLayout: (layout: DrillingSystemsLayout | null) => void;
   onEditKit: (kitId: string) => void;
   onOpenCaliperAssistant: () => void;
   onChangeParams: (patch: Partial<SimulationParams>) => void;
   onResetParam: (key: ResettableParamKey) => void;
   onSetKitAsDefault: (kitId: string) => void;
+  onSaveParamDefault: (kitId: string, key: ResettableParamKey | 'sleeveSeating') => void;
   onRestoreKitHistory: (kitId: string, historyId: string) => void;
   onResetKitToFactory: (kitId: string) => void;
   onDeleteKit: (kitId: string) => void;
@@ -82,10 +74,34 @@ function ParamResetButton({
   );
 }
 
+function SaveDefaultIconButton({
+  paramKey,
+  label,
+  onClick,
+}: {
+  paramKey: string;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      data-testid={`save-default-${paramKey}`}
+      onClick={onClick}
+      aria-label={`Enregistrer ${label} par défaut`}
+      title={`Enregistrer ${label} par défaut`}
+      className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded bg-sky-600 text-white shadow-xs transition-colors hover:bg-sky-700"
+    >
+      <BookmarkCheck className="h-3 w-3" aria-hidden="true" />
+    </button>
+  );
+}
+
 export function ControlSidebar({
   params,
   geometry,
   kits,
+  drillingLayout,
   customImplants = [],
   highlightedElement = null,
   onSelectImplant,
@@ -94,23 +110,22 @@ export function ControlSidebar({
   onOpenFreeImplantWizard,
   onSelectKit,
   onSelectKitSleeve,
+  onChangeDrillingLayout,
   onEditKit,
   onOpenCaliperAssistant,
   onChangeParams,
   onResetParam,
   onSetKitAsDefault,
+  onSaveParamDefault,
   onRestoreKitHistory,
   onResetKitToFactory,
   onDeleteKit,
   onResetAll,
 }: ControlSidebarProps) {
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [systemsDrawerOpen, setSystemsDrawerOpen] = useState(false);
   const [implantDrawerOpen, setImplantDrawerOpen] = useState(false);
-  const [anatomyDrawerOpen, setAnatomyDrawerOpen] = useState(false);
+  const [extraParamsDrawerOpen, setExtraParamsDrawerOpen] = useState(false);
   const [hardwareDrawerOpen, setHardwareDrawerOpen] = useState(false);
-  const [kitMenuOpenId, setKitMenuOpenId] = useState<string | null>(null);
-  const [historyOpenId, setHistoryOpenId] = useState<string | null>(null);
-  const [defaultSavedToastId, setDefaultSavedToastId] = useState<string | null>(null);
 
   const highlightConfig = getElementHighlightConfig(highlightedElement);
   const isHighlighted = (key: HighlightableParamKey) =>
@@ -122,651 +137,181 @@ export function ControlSidebar({
 
   useEffect(() => {
     if (!highlightConfig) return;
-    if (highlightConfig.openDrawer === 3) {
-      setAnatomyDrawerOpen(true);
-    } else if (highlightConfig.openDrawer === 4) {
-      setHardwareDrawerOpen(true);
+    if (highlightedElement === 'sleeve') {
+      setSystemsDrawerOpen(true);
     }
-  }, [highlightConfig]);
-
-  const sortedKits = sortKitsByUsage(kits);
-  const topThreeKits = sortedKits.slice(0, 3);
-  const extraKits = sortedKits.slice(3);
+    if (highlightConfig.openDrawer === 2) {
+      setImplantDrawerOpen(true);
+    } else if (highlightConfig.openDrawer === 3) {
+      setHardwareDrawerOpen(true);
+    } else if (highlightConfig.openDrawer === 4) {
+      setExtraParamsDrawerOpen(true);
+    }
+  }, [highlightConfig, highlightedElement]);
 
   const activeKit = geometry.activeKit;
+  const def = activeKit.userDefaults;
+  const defGuideExt = def.guideTubeExtension ?? DEFAULT_SIMULATION_PARAMS.guideTubeExtension;
+  const defHandpiece = def.handpieceHeadHeightMm ?? DEFAULT_SIMULATION_PARAMS.handpieceHeadHeight;
+  const defSubcrestal = def.subcrestalDepthMm ?? DEFAULT_SIMULATION_PARAMS.subcrestalDepth;
+  const defGingiva = def.gingivaThicknessMm ?? DEFAULT_SIMULATION_PARAMS.gingivaThickness;
 
-  const handleImplantLengthChange = (nextLen: number) => {
-    const patch: Partial<SimulationParams> = { implantLength: nextLen };
-    if (activeKit.kind === 'pilot') {
-      patch.pilotDrillLength = pickOptimalPilotLength(
-        nextLen,
-        activeKit.userDefaults.availableLengthsMm,
-        params.subcrestalDepth,
-        params.gingivaThickness,
-        params.guideHeight,
-      );
+  const isOffsetModified = Math.abs(geometry.offsetCao - def.offsetMm) >= 0.05;
+  const isSubcrestalModified = Math.abs(params.subcrestalDepth - defSubcrestal) >= 0.05;
+  const isGuideHeightModified = Math.abs(params.guideHeight - def.guidingHeightMm) >= 0.04;
+  const isSleeveSeatingModified = params.sleeveSeating !== def.sleeveSeating;
+  const isSleeveLipModified = Math.abs(params.sleeveLipThickness - def.sleeveLipThicknessMm) >= 0.01;
+  const isSleeveWallModified = Math.abs(params.sleeveWallThickness - def.sleeveWallThicknessMm) >= 0.01;
+  const isDrillSleeveClearModified =
+    Math.abs(params.drillToSleeveClearance - def.drillToSleeveClearanceMm) >= 0.005;
+  const isSurgicalGuideOffsetModified =
+    Math.abs(params.surgicalGuideOffset - def.surgicalGuideOffsetMm) >= 0.005;
+  const isGuideTubeExtensionModified = params.guideTubeExtension !== defGuideExt;
+  const isPrintingClearanceModified =
+    Math.abs(params.printingClearance - def.printingClearanceMm) >= 0.005;
+  const isHandpieceModified = Math.abs(params.handpieceHeadHeight - defHandpiece) >= 0.05;
+  const isGingivaModified = Math.abs(params.gingivaThickness - defGingiva) >= 0.05;
+
+  const handleOffsetChange = (val: number) => {
+    if (geometry.isPilotKit) {
+      onChangeParams({
+        pilotDrillLength: clamp(roundTo(val + params.implantLength, 1), 12.0, 32.0),
+      });
+    } else {
+      onChangeParams({ offsetOverride: val });
     }
-    onSelectImplant(patch);
   };
 
-  const renderKitCard = (kit: DrillingKit) => {
-    const isActive = params.mode === 'kit' && kit.id === activeKit.id;
-    const isMenuOpen = kitMenuOpenId === kit.id;
-    const isHistoryOpen = historyOpenId === kit.id;
-    const effectiveHasSleeve = isActive ? params.hasSleeve : kit.userDefaults.hasSleeve;
-
-    return (
-      <div
-        key={kit.id}
-        data-testid={`sidebar-system-${kit.id}`}
-        className={`relative rounded-lg border transition-colors ${
-          isActive
-            ? 'border-sky-500 bg-sky-50/60'
-            : 'border-slate-200 bg-white hover:border-slate-300'
-        }`}
-      >
-        <div className="flex items-start justify-between gap-1.5 p-2">
-          <button
-            type="button"
-            onClick={() => {
-              setKitMenuOpenId(null);
-              setHistoryOpenId(null);
-              onSelectKit(kit.id);
-            }}
-            className="min-w-0 flex-1 space-y-1 text-left"
-          >
-            <div className="text-xs font-bold leading-snug text-slate-900">{kit.name}</div>
-            <div>
-              <span
-                className={`inline-flex items-center rounded px-1.5 py-0.5 text-[9.5px] font-bold ${
-                  kit.kind === 'pilot'
-                    ? 'bg-amber-100 text-amber-800'
-                    : 'bg-sky-100 text-sky-800'
-                }`}
-              >
-                {kit.kind === 'pilot' ? 'Foret pilote' : 'Forage guidé'}
-              </span>
-            </div>
-            <div className="text-[10.5px] leading-snug text-slate-500">
-              {kit.kind === 'pilot'
-                ? 'Compatible : Tous implants (Bibliothèque)'
-                : kit.implantBrandName && kit.implantModelName
-                  ? `Compatible : ${kit.implantBrandName} · ${kit.implantModelName}`
-                  : kit.brandLabel}
-            </div>
-          </button>
-
-          <div className="flex items-center gap-1 shrink-0">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setKitMenuOpenId(null);
-                setHistoryOpenId(null);
-                onEditKit(kit.id);
-              }}
-              data-testid={`sidebar-edit-${kit.id}`}
-              aria-label={`Modifier ${kit.name} au pied à coulisse`}
-              title={`Modifier ${kit.name} au pied à coulisse`}
-              className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-500 transition-colors hover:border-sky-400 hover:text-sky-700"
-            >
-              <Pencil className="h-3 w-3" aria-hidden="true" />
-            </button>
-
-            {isActive && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setKitMenuOpenId((prev) => (prev === kit.id ? null : kit.id));
-                  setHistoryOpenId(null);
-                }}
-                aria-label={`Menu du système ${kit.name}`}
-                aria-expanded={isMenuOpen}
-                title="Options (Défaut / Historique / Usine)"
-                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-sky-200 bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-              >
-                <MoreVertical className="h-3.5 w-3.5" aria-hidden="true" />
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Right/Bottom Sub-button: Avec douille | Sans douille for every system */}
-        <div className="px-2 pb-2">
-          <div
-            role="group"
-            aria-label={`Douille pour ${kit.name}`}
-            className={`grid grid-cols-2 gap-1 rounded-md border bg-slate-100 p-0.5 text-[10.5px] font-semibold ${
-              isActive && isHighlighted('sleeve')
-                ? 'param-highlight-ring'
-                : 'border-slate-200'
-            }`}
-          >
-            <button
-              type="button"
-              onClick={() => {
-                setKitMenuOpenId(null);
-                onSelectKitSleeve(kit.id, true);
-              }}
-              data-testid={`sidebar-sleeve-with-${kit.id}`}
-              className={`rounded py-0.5 text-center transition-colors ${
-                effectiveHasSleeve
-                  ? 'bg-sky-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Avec douille
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setKitMenuOpenId(null);
-                onSelectKitSleeve(kit.id, false);
-              }}
-              data-testid={`sidebar-sleeve-without-${kit.id}`}
-              className={`rounded py-0.5 text-center transition-colors ${
-                !effectiveHasSleeve
-                  ? 'bg-sky-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Sans douille
-            </button>
-          </div>
-        </div>
-
-        {/* Compact Menu inside Active System Card */}
-        {isActive && isMenuOpen && (
-          <div
-            data-testid="active-kit-menu"
-            className="border-t border-sky-200/80 bg-white/95 px-2 py-2 text-xs rounded-b-lg space-y-1"
-          >
-            <button
-              type="button"
-              onClick={() => {
-                setKitMenuOpenId(null);
-                onEditKit(kit.id);
-              }}
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left font-medium text-slate-700 hover:bg-sky-50 hover:text-sky-900"
-            >
-              <Pencil className="h-3.5 w-3.5 text-sky-600" aria-hidden="true" />
-              <span>Modifier au pied à coulisse</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                onSetKitAsDefault(kit.id);
-                setDefaultSavedToastId(kit.id);
-                setTimeout(() => setDefaultSavedToastId(null), 2000);
-              }}
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left font-medium text-slate-700 hover:bg-sky-50 hover:text-sky-900"
-            >
-              <BookmarkCheck className="h-3.5 w-3.5 text-sky-600" aria-hidden="true" />
-              <span>
-                {defaultSavedToastId === kit.id
-                  ? 'Réglages enregistrés par défaut'
-                  : 'Définir par défaut'}
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setHistoryOpenId((prev) => (prev === kit.id ? null : kit.id))}
-              className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left font-medium text-slate-700 hover:bg-slate-100"
-            >
-              <span className="flex items-center gap-2">
-                <History className="h-3.5 w-3.5 text-slate-500" aria-hidden="true" />
-                Historique ({kit.history.length})
-              </span>
-              {isHistoryOpen ? (
-                <ChevronUp className="h-3 w-3 text-slate-400" aria-hidden="true" />
-              ) : (
-                <ChevronDown className="h-3 w-3 text-slate-400" aria-hidden="true" />
-              )}
-            </button>
-
-            {isHistoryOpen && (
-              <div className="max-h-32 space-y-1 overflow-y-auto rounded-md border border-slate-200 bg-slate-50 p-1.5">
-                {kit.history.length === 0 ? (
-                  <div className="px-1 py-1 text-[10.5px] text-slate-500">
-                    Aucune modification sauvegardée pour ce système.
-                  </div>
-                ) : (
-                  kit.history.map((entry) => (
-                    <div
-                      key={entry.id}
-                      className="flex items-center justify-between gap-1.5 rounded bg-white px-2 py-1 text-[10.5px]"
-                    >
-                      <div className="min-w-0">
-                        <div className="truncate font-medium text-slate-800">{entry.label}</div>
-                        <div className="font-mono-tabular text-[10px] text-slate-400">
-                          Décalage {entry.snapshot.offsetMm.toFixed(1)} · H{' '}
-                          {entry.snapshot.guidingHeightMm.toFixed(1)} mm
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onRestoreKitHistory(kit.id, entry.id);
-                          setHistoryOpenId(null);
-                        }}
-                        className="shrink-0 rounded border border-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700 hover:bg-sky-50"
-                      >
-                        Restaurer
-                      </button>
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
-
-            <button
-              type="button"
-              onClick={() => {
-                onResetKitToFactory(kit.id);
-                setKitMenuOpenId(null);
-              }}
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left font-medium text-slate-700 hover:bg-amber-50 hover:text-amber-900"
-            >
-              <RotateCcw className="h-3.5 w-3.5 text-amber-600" aria-hidden="true" />
-              Paramètres d&apos;usine
-            </button>
-
-            {!kit.isFactory && (
-              <button
-                type="button"
-                onClick={() => {
-                  setKitMenuOpenId(null);
-                  onDeleteKit(kit.id);
-                }}
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left font-medium text-rose-600 hover:bg-rose-50"
-              >
-                <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-                Supprimer ce système
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-    );
+  const handleDrillingLengthChange = (val: number) => {
+    if (geometry.isPilotKit) {
+      onChangeParams({ pilotDrillLength: val });
+    } else {
+      const newOffset = clamp(roundTo(val - params.implantLength, 1), 4.0, 20.0);
+      onChangeParams({ offsetOverride: newOffset });
+    }
   };
 
   return (
     <aside
-      aria-label="Configuration du système implantaire et de l'implant"
+      aria-label="Paramètres de simulation"
+      data-testid="control-sidebar"
       className="bsp-panel flex flex-col gap-3 rounded-xl border p-3 shadow-xs"
     >
-      {/* DEDICATED TOP SUB-CATEGORY: ASSISTANT PIED À COULISSE — CRÉER MON SYSTÈME IMPLANTAIRE */}
-      <div>
+      {/* Top Sidebar Title: Paramètres (No dynamic top banner so drawers never shift vertically) */}
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 pb-2">
+        <h2 className="text-xs font-extrabold uppercase tracking-wider text-slate-900">
+          Paramètres
+        </h2>
         <button
           type="button"
-          onClick={onOpenCaliperAssistant}
-          data-testid="open-caliper-assistant-btn"
-          className={`flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left transition-colors ${
-            params.mode === 'caliper'
-              ? 'border-sky-600 bg-sky-600 text-white shadow-xs'
-              : 'border-sky-200 bg-sky-50/70 text-sky-950 hover:bg-sky-100/70'
-          }`}
+          onClick={onResetAll}
+          className="inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10.5px] font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+          title="Tout réinitialiser aux valeurs par défaut"
         >
-          <div className="flex items-center gap-2.5 min-w-0">
-            <span
-              className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${
-                params.mode === 'caliper'
-                  ? 'bg-white/20 text-white'
-                  : 'bg-white text-sky-700 border border-sky-200'
-              }`}
-            >
-              <Wrench className="h-3.5 w-3.5" aria-hidden="true" />
-            </span>
-            <div className="min-w-0">
-              <div className="truncate text-xs font-semibold">Assistant pied à coulisse</div>
-              <div
-                className={`truncate text-[10.5px] ${
-                  params.mode === 'caliper' ? 'text-sky-100' : 'text-sky-700'
-                }`}
-              >
-                Créer mon système implantaire
-              </div>
-            </div>
-          </div>
-          <Ruler className="h-4 w-4 shrink-0 opacity-85" aria-hidden="true" />
+          <RotateCcw className="h-3 w-3" aria-hidden="true" />
+          Réinit.
         </button>
       </div>
 
-      {/* 1. BIBLIOTHÈQUE DES SYSTÈMES DE FORAGE & PILOTES (TOP 3 + DRAWER) */}
-      <div className="rounded-lg border border-slate-200 overflow-hidden">
-        <div className="bsp-section-header flex items-center justify-between gap-2 border-b px-3 py-2">
-          <h2 className="flex items-center gap-1.5 text-xs font-bold min-w-0">
-            <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-75" aria-hidden="true" />
-            <span className="truncate">
-              1. <BilingualTerm fr="Systèmes de forage" en="Drilling & Pilot Kits" />
-            </span>
-          </h2>
+      {/* 1. SYSTÈMES DE FORAGE (ORDRE ALPHABÉTIQUE + ASSISTANT PIED À COULISSE) */}
+      <div
+        data-testid="sidebar-drawer-1"
+        className={`shrink-0 rounded-lg border transition-colors ${
+          isHighlighted('sleeve') ? 'border-sky-400' : 'border-slate-200'
+        }`}
+      >
+        <button
+          type="button"
+          onClick={() => setSystemsDrawerOpen((o) => !o)}
+          aria-expanded={systemsDrawerOpen}
+          data-testid="sidebar-drawer-1-toggle"
+          className={`bsp-section-header flex w-full items-center justify-between gap-2 px-3 py-2 text-left transition-colors hover:opacity-95 ${
+            systemsDrawerOpen ? 'rounded-t-lg border-b' : 'rounded-lg'
+          }`}
+        >
+          <span className="flex items-center gap-1.5 text-xs font-bold min-w-0">
+            {systemsDrawerOpen ? (
+              <ChevronUp className="h-3.5 w-3.5 shrink-0 opacity-75" aria-hidden="true" />
+            ) : (
+              <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-75" aria-hidden="true" />
+            )}
+            <span className="truncate">1. Systèmes de forage</span>
+          </span>
           <span className="shrink-0 text-[10px] font-medium text-slate-500">Pilotes &amp; guidés</span>
-        </div>
+        </button>
 
-        <div className="p-2 space-y-1.5">
-          <div className="space-y-1.5" data-testid="top-kits-list">
-            {topThreeKits.map((kit) => renderKitCard(kit))}
+        {systemsDrawerOpen && (
+          <div className="p-2">
+            <DrillingSystemsSection
+              variant="advanced"
+              params={params}
+              kits={kits}
+              drillingLayout={drillingLayout}
+              activeKit={activeKit}
+              isSleeveHighlighted={isHighlighted('sleeve')}
+              onSelectKit={onSelectKit}
+              onSelectKitSleeve={onSelectKitSleeve}
+              onChangeDrillingLayout={onChangeDrillingLayout}
+              onEditKit={onEditKit}
+              onOpenCaliperAssistant={onOpenCaliperAssistant}
+              onSetKitAsDefault={onSetKitAsDefault}
+              onRestoreKitHistory={onRestoreKitHistory}
+              onResetKitToFactory={onResetKitToFactory}
+              onDeleteKit={onDeleteKit}
+            />
           </div>
-
-          {extraKits.length > 0 && (
-            <div>
-              <button
-                type="button"
-                onClick={() => setDrawerOpen((o) => !o)}
-                aria-expanded={drawerOpen}
-                data-testid="extra-kits-drawer-toggle"
-                className="flex w-full items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-100"
-              >
-                <span>Autres systèmes de forage ({extraKits.length})</span>
-                {drawerOpen ? (
-                  <ChevronUp className="h-3.5 w-3.5 text-slate-500" aria-hidden="true" />
-                ) : (
-                  <ChevronDown className="h-3.5 w-3.5 text-slate-500" aria-hidden="true" />
-                )}
-              </button>
-              {drawerOpen && (
-                <div className="mt-1.5 space-y-1.5 rounded-lg border border-slate-200 bg-slate-50/60 p-1.5">
-                  {extraKits.map((kit) => renderKitCard(kit))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+        )}
       </div>
 
-      {/* 2. CHOIX DE L'IMPLANT (CORRELATED TO ACTIVE SYSTEM) */}
-      <div className="rounded-lg border border-slate-200 overflow-hidden">
-        <div className="bsp-section-header flex items-center justify-between gap-2 border-b px-3 py-2">
-          <h2 className="flex items-center gap-1.5 text-xs font-bold min-w-0">
-            <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-75" aria-hidden="true" />
-            <span className="truncate">
-              2. <BilingualTerm fr="Choix de l'implant" en="Implant Dimensions" />
-            </span>
-          </h2>
-          <button
-            type="button"
-            onClick={onResetAll}
-            className="inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10.5px] font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-900"
-            title="Tout réinitialiser aux valeurs par défaut"
-          >
-            <RotateCcw className="h-3 w-3" aria-hidden="true" />
-            Réinit.
-          </button>
-        </div>
+      {/* 2. CHOIX DE L'IMPLANT (SHARED WITH MODE ASSISTÉ + ADVANCED DRILL INDICATOR + SUBCRESTAL) */}
+      <div
+        data-testid="sidebar-drawer-2"
+        className={`shrink-0 rounded-lg border transition-colors ${
+          isHighlighted('implantDiameter') ||
+          isHighlighted('implantLength') ||
+          isHighlighted('offsetCao') ||
+          isHighlighted('drillUsefulLength') ||
+          isHighlighted('subcrestalDepth')
+            ? 'border-sky-400'
+            : 'border-slate-200'
+        }`}
+      >
+        <button
+          type="button"
+          onClick={() => setImplantDrawerOpen((o) => !o)}
+          aria-expanded={implantDrawerOpen}
+          data-testid="sidebar-drawer-2-toggle"
+          className={`bsp-section-header flex w-full items-center justify-between gap-2 px-3 py-2 text-left transition-colors hover:opacity-95 ${
+            implantDrawerOpen ? 'rounded-t-lg border-b' : 'rounded-lg'
+          }`}
+        >
+          <span className="flex items-center gap-1.5 text-xs font-bold min-w-0">
+            {implantDrawerOpen ? (
+              <ChevronUp className="h-3.5 w-3.5 shrink-0 opacity-75" aria-hidden="true" />
+            ) : (
+              <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-75" aria-hidden="true" />
+            )}
+            <span className="truncate">2. Choix de l&apos;implant</span>
+          </span>
+          <span className="font-mono-tabular shrink-0 whitespace-nowrap rounded border border-slate-300/60 bg-white/70 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
+            Ø{params.implantDiameter.toFixed(1)} · {params.implantLength.toFixed(1)} mm
+          </span>
+        </button>
 
-        <div className="p-2.5">
-          {(() => {
-            const sortedImplantLibrary = sortImplantModelsByUsage(customImplants);
-            const topThreeImplants = sortedImplantLibrary.slice(0, 3);
-            const extraImplants = sortedImplantLibrary.slice(3);
-            const extraBrandGroups = groupImplantModelsByBrand(extraImplants);
-
-            const activeLibraryModel =
-              customImplants.find((m) => m.id === params.customImplantId) ??
-              (params.implantBrand === 'kontact'
-                ? customImplants.find((m) => m.id === 'factory-implant-biotech-kontact')
-                : params.implantBrand === 'globald'
-                  ? customImplants.find((m) => m.id === 'factory-implant-globald-inkone')
-                  : customImplants.find((m) => m.name === params.customImplantName)) ??
-              customImplants[0];
-
-            const renderModelCard = (model: CustomImplantSystem) => {
-              const isSelected = activeLibraryModel?.id === model.id;
-              return (
-                <div
-                  key={model.id}
-                  data-testid={`implant-model-${model.id}`}
-                  className={`flex items-center justify-between gap-1.5 rounded-md border px-2 py-1.5 transition-colors ${
-                    isSelected
-                      ? 'border-sky-600 bg-sky-50/70'
-                      : 'border-slate-200 bg-white hover:border-slate-300'
-                  }`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => onSelectImplantModel(model)}
-                    className="min-w-0 flex-1 space-y-0.5 text-left"
-                  >
-                    <div className="truncate text-[11.5px] font-bold leading-tight text-slate-900">
-                      {model.brand}
-                    </div>
-                    <div>
-                      <span className="inline-flex items-center rounded bg-sky-100 px-1.5 py-0.5 text-[9.5px] font-semibold text-sky-800">
-                        {model.model}
-                      </span>
-                    </div>
-                    <div className="font-mono-tabular truncate text-[10px] text-slate-500">
-                      Ø {model.diametersMm.map((d) => d.toFixed(1)).join(' · ')} | L{' '}
-                      {model.lengthsMm.map((l) => (Number.isInteger(l) ? l.toFixed(0) : l.toFixed(1))).join(' · ')}
-                    </div>
-                  </button>
-                  {!model.isFactory && onDeleteImplantModel && (
-                    <button
-                      type="button"
-                      onClick={() => onDeleteImplantModel(model.id)}
-                      aria-label={`Supprimer ${model.brand} ${model.model}`}
-                      className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-rose-50 hover:text-rose-600"
-                    >
-                      <Trash2 className="h-3 w-3" aria-hidden="true" />
-                    </button>
-                  )}
-                </div>
-              );
-            };
-
-            const activeDiameters =
-              activeKit.kind === 'guided' && !activeKit.isFactory
-                ? activeKit.userDefaults.implantDiametersMm
-                : activeKit.kind === 'guided' && params.implantBrand === 'kontact'
-                  ? BIOTECH_KONTACT_DIAMETERS
-                  : activeLibraryModel?.diametersMm ?? GLOBAL_D_IMPLANT_DIAMETERS;
-
-            const activeLengths =
-              activeKit.kind === 'guided' && !activeKit.isFactory
-                ? activeKit.userDefaults.implantLengthsMm
-                : activeKit.kind === 'guided' && params.implantBrand === 'kontact'
-                  ? BIOTECH_KONTACT_LENGTHS
-                  : activeLibraryModel?.lengthsMm ?? GLOBAL_D_IMPLANT_LENGTHS;
-
-            const activeModelLabel =
-              activeKit.kind === 'guided' && !activeKit.isFactory
-                ? activeKit.name
-                : activeLibraryModel
-                  ? `${activeLibraryModel.brand} ${activeLibraryModel.model}`
-                  : params.implantBrand === 'globald'
-                    ? 'Global D In-Kone'
-                    : 'Biotech Kontact';
-
-            return (
-              <div className="space-y-2.5">
-                {/* Library Mode Header: Pilot gets full Top 3 + drawer; Guided gets compatible implant + Saisie libre */}
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="text-[11px] font-bold text-slate-800">
-                      {activeKit.kind === 'pilot' ? 'Bibliothèque implants' : 'Gamme compatible'}
-                    </div>
-                    <div className="truncate text-[10px] text-slate-500">
-                      {activeKit.kind === 'pilot'
-                        ? 'Top 3 les plus utilisés'
-                        : `${activeKit.implantBrandName ?? 'Biotech'} · ${activeKit.implantModelName ?? 'Kontact'}`}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={onOpenFreeImplantWizard}
-                    data-testid="open-free-implant-btn"
-                    className="inline-flex shrink-0 items-center gap-1 rounded-md border border-sky-300 bg-sky-50/70 px-2 py-1 text-[10.5px] font-semibold text-sky-800 hover:bg-sky-100"
-                  >
-                    <Plus className="h-3 w-3" aria-hidden="true" />
-                    Saisie libre
-                  </button>
-                </div>
-
-                {/* Pilot System: Full Implant Library (Top 3 + Drawer organized by Brand/Model) */}
-                {activeKit.kind === 'pilot' && (
-                  <div className="space-y-1.5" data-testid="pilot-implant-library">
-                    <div className="space-y-1">{topThreeImplants.map(renderModelCard)}</div>
-                    {extraImplants.length > 0 && (
-                      <div>
-                        <button
-                          type="button"
-                          onClick={() => setImplantDrawerOpen((o) => !o)}
-                          aria-expanded={implantDrawerOpen}
-                          data-testid="extra-implants-drawer-toggle"
-                          className="flex w-full items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10.5px] font-semibold text-slate-700 hover:bg-slate-100"
-                        >
-                          <span>Autres modèles ({extraImplants.length})</span>
-                          {implantDrawerOpen ? (
-                            <ChevronUp className="h-3.5 w-3.5 text-slate-500" aria-hidden="true" />
-                          ) : (
-                            <ChevronDown className="h-3.5 w-3.5 text-slate-500" aria-hidden="true" />
-                          )}
-                        </button>
-                        {implantDrawerOpen && (
-                          <div
-                            data-testid="extra-implants-drawer"
-                            className="mt-1.5 space-y-2 rounded-lg border border-slate-200 bg-slate-50/60 p-1.5"
-                          >
-                            {extraBrandGroups.map((group) => (
-                              <div key={group.brand} className="space-y-1">
-                                <div className="px-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                                  {group.brand}
-                                </div>
-                                {group.models.map(renderModelCard)}
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Guided System: Compatible implant indicator + quick switch if a custom Saisie libre model is selected */}
-                {activeKit.kind === 'guided' && params.implantBrand === 'custom' && activeLibraryModel && (
-                  <div className="flex items-center justify-between rounded-md border border-sky-200 bg-sky-50/50 px-2 py-1 text-[10.5px]">
-                    <span className="truncate font-semibold text-sky-900">
-                      Saisie libre : {activeLibraryModel.brand} {activeLibraryModel.model}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onSelectImplant({
-                          implantBrand:
-                            activeKit.id === 'factory-biotech-kontact' ? 'kontact' : 'custom',
-                          customImplantId:
-                            activeKit.id === 'factory-biotech-kontact'
-                              ? 'factory-implant-biotech-kontact'
-                              : undefined,
-                          customImplantName:
-                            activeKit.id === 'factory-biotech-kontact' ? undefined : activeKit.name,
-                          implantDiameter: activeKit.userDefaults.implantDiametersMm[0] ?? 4.2,
-                          implantLength: activeKit.userDefaults.implantLengthsMm[0] ?? 10.0,
-                        })
-                      }
-                      className="shrink-0 font-semibold text-sky-700 underline hover:text-sky-900"
-                    >
-                      Compatible
-                    </button>
-                  </div>
-                )}
-
-                {/* Diameters: Preset Buttons of Active Model + Continuous Slider (2.0–8.0 mm) */}
-                <div className={highlightBox('implantDiameter')}>
-                  <div className="mb-1 flex items-center justify-between text-[11px]">
-                    <label htmlFor="implant-diameter-slider" className="font-medium text-slate-600 truncate">
-                      Diamètre {activeModelLabel} (mm)
-                    </label>
-                    <span className="font-mono-tabular shrink-0 font-semibold text-slate-900">
-                      Ø{params.implantDiameter.toFixed(1)} mm
-                    </span>
-                  </div>
-                  <div
-                    className={`grid gap-1 ${
-                      activeDiameters.length <= 3
-                        ? 'grid-cols-3'
-                        : activeDiameters.length === 4
-                          ? 'grid-cols-4'
-                          : 'grid-cols-5'
-                    }`}
-                  >
-                    {activeDiameters.map((dia) => (
-                      <button
-                        key={dia}
-                        type="button"
-                        onClick={() => onSelectImplant({ implantDiameter: dia })}
-                        className={`font-mono-tabular rounded-md border py-1 text-[11px] font-semibold transition-colors ${
-                          Math.abs(params.implantDiameter - dia) < 0.05
-                            ? 'border-sky-600 bg-sky-600 text-white'
-                            : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                        }`}
-                      >
-                        Ø{dia.toFixed(1)}
-                      </button>
-                    ))}
-                  </div>
-                  <input
-                    id="implant-diameter-slider"
-                    data-testid="implant-diameter-slider"
-                    type="range"
-                    min={2.0}
-                    max={8.0}
-                    step={0.1}
-                    value={clamp(params.implantDiameter, 2.0, 8.0)}
-                    aria-label="Curseur diamètre de l'implant"
-                    onChange={(e) =>
-                      onSelectImplant({ implantDiameter: parseFloat(e.target.value) })
-                    }
-                    className="cad-slider mt-1.5 w-full"
-                  />
-                </div>
-
-                {/* Lengths: Preset Buttons of Active Model + Continuous Slider (4.0–20.0 mm) */}
-                <div className={highlightBox('implantLength')}>
-                  <div className="mb-1 flex items-center justify-between text-[11px]">
-                    <label htmlFor="implant-length-slider" className="font-medium text-slate-600 truncate">
-                      Longueur {activeModelLabel} (mm)
-                    </label>
-                    <span className="font-mono-tabular shrink-0 font-semibold text-slate-900">
-                      {params.implantLength.toFixed(1)} mm
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-3 gap-1">
-                    {activeLengths.map((len) => (
-                      <button
-                        key={len}
-                        type="button"
-                        onClick={() => handleImplantLengthChange(len)}
-                        className={`font-mono-tabular rounded-md border py-1 text-xs font-semibold transition-colors ${
-                          Math.abs(params.implantLength - len) < 0.05
-                            ? 'border-sky-600 bg-sky-600 text-white'
-                            : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                        }`}
-                      >
-                        {Number.isInteger(len) ? `${len.toFixed(0)} mm` : `${len.toFixed(1)} mm`}
-                      </button>
-                    ))}
-                  </div>
-                  <input
-                    id="implant-length-slider"
-                    data-testid="implant-length-slider"
-                    type="range"
-                    min={4.0}
-                    max={20.0}
-                    step={0.1}
-                    value={clamp(params.implantLength, 4.0, 20.0)}
-                    aria-label="Curseur longueur de l'implant"
-                    onChange={(e) => handleImplantLengthChange(parseFloat(e.target.value))}
-                    className="cad-slider mt-1.5 w-full"
-                  />
-                </div>
-              </div>
-            );
-          })()}
+        {implantDrawerOpen && (
+          <div className="p-2.5">
+          <ImplantSelectionSection
+            variant="advanced"
+            params={params}
+            activeKit={activeKit}
+            customImplants={customImplants}
+            diameterHighlightClass={highlightBox('implantDiameter')}
+            lengthHighlightClass={highlightBox('implantLength')}
+            onSelectImplant={onSelectImplant}
+            onSelectImplantModel={onSelectImplantModel}
+            onDeleteImplantModel={onDeleteImplantModel}
+            onOpenFreeImplantWizard={onOpenFreeImplantWizard}
+          />
 
           {/* Automatic drill adaptation indicator */}
           <div
@@ -776,8 +321,8 @@ export function ControlSidebar({
                 : 'border-slate-200 bg-slate-50'
             }`}
           >
-            <span className="text-slate-600">Foret adapté :</span>
-            <span className="font-mono-tabular font-semibold text-slate-900">
+            <span className="text-slate-600 whitespace-nowrap">Foret adapté :</span>
+            <span className="font-mono-tabular font-semibold text-slate-900 whitespace-nowrap">
               {geometry.drillMarking}
             </span>
           </div>
@@ -809,122 +354,147 @@ export function ControlSidebar({
               </div>
             </div>
           )}
-        </div>
+
+          {/* Integrated Décalage total & Longueur forage sliders */}
+          <div className="mt-2.5 space-y-2 border-t border-slate-200 pt-2.5">
+            <div className={highlightBox('offsetCao')}>
+              <div className="flex items-center justify-between text-[11px]">
+                <label htmlFor="sb-offset-cao" className="font-medium text-slate-700">
+                  <BilingualTerm fr="Décalage total" en="Total Offset" />
+                </label>
+                <div className="flex items-center gap-1">
+                  {isOffsetModified && (
+                    <SaveDefaultIconButton
+                      paramKey="offsetCao"
+                      label="le décalage total"
+                      onClick={() => onSaveParamDefault(activeKit.id, 'offsetCao')}
+                    />
+                  )}
+                  <span
+                    data-testid="sb-offset-cao-value"
+                    className="font-mono-tabular font-semibold text-sky-700"
+                  >
+                    {geometry.offsetCao.toFixed(1)} mm
+                  </span>
+                  <ParamResetButton
+                    label="le décalage total"
+                    onClick={() => onResetParam('offsetCao')}
+                  />
+                </div>
+              </div>
+              <input
+                id="sb-offset-cao"
+                data-testid="sb-offset-cao-slider"
+                type="range"
+                min={4.0}
+                max={20.0}
+                step={0.5}
+                value={clamp(geometry.offsetCao, 4.0, 20.0)}
+                title="Double-cliquer pour réinitialiser par défaut"
+                onChange={(e) => handleOffsetChange(parseFloat(e.target.value))}
+                onDoubleClick={() => onResetParam('offsetCao')}
+                className="cad-slider mt-1 w-full"
+              />
+              <p className="mt-0.5 text-[10px] text-slate-500">Col implantaire → Butée du foret</p>
+            </div>
+
+            <div className={highlightBox('drillUsefulLength')}>
+              <div className="flex items-center justify-between text-[11px]">
+                <label htmlFor="sb-drilling-length" className="font-medium text-slate-700">
+                  <BilingualTerm fr="Longueur forage" en="Drilling Length" />
+                </label>
+                <div className="flex items-center gap-1">
+                  {isOffsetModified && (
+                    <SaveDefaultIconButton
+                      paramKey="drillUsefulLength"
+                      label="la longueur de forage"
+                      onClick={() => onSaveParamDefault(activeKit.id, 'offsetCao')}
+                    />
+                  )}
+                  <span
+                    data-testid="sb-drilling-length-value"
+                    className="font-mono-tabular font-semibold text-slate-800"
+                  >
+                    {geometry.drillUsefulLength.toFixed(1)} mm
+                  </span>
+                  <ParamResetButton
+                    label="la longueur de forage"
+                    onClick={() => onResetParam('drillUsefulLength')}
+                  />
+                </div>
+              </div>
+              <input
+                id="sb-drilling-length"
+                data-testid="sb-drilling-length-slider"
+                type="range"
+                min={12.0}
+                max={32.0}
+                step={0.1}
+                value={clamp(geometry.drillUsefulLength, 12.0, 32.0)}
+                title="Double-cliquer pour réinitialiser par défaut"
+                onChange={(e) => handleDrillingLengthChange(parseFloat(e.target.value))}
+                onDoubleClick={() => onResetParam('drillUsefulLength')}
+                className="cad-slider mt-1 w-full"
+              />
+              <p className="mt-0.5 text-[10px] text-slate-500">Sous butée → Pointe du foret</p>
+            </div>
+
+            {/* Enfouissement sous-crestal moved to the end of Part 2: Choix de l'implant */}
+            <div className={`border-t border-slate-200 pt-2.5 ${highlightBox('subcrestalDepth')}`}>
+              <div className="flex items-center justify-between text-[11px]">
+                <label htmlFor="sb-subcrestal-depth" className="font-medium text-slate-700">
+                  <BilingualTerm fr="Enfouissement sous-crestal" en="Subcrestal Depth" />
+                </label>
+                <div className="flex items-center gap-1">
+                  {isSubcrestalModified && (
+                    <SaveDefaultIconButton
+                      paramKey="subcrestalDepth"
+                      label="l'enfouissement sous-crestal"
+                      onClick={() => onSaveParamDefault(activeKit.id, 'subcrestalDepth')}
+                    />
+                  )}
+                  <span className="font-mono-tabular font-semibold text-violet-700">
+                    {params.subcrestalDepth.toFixed(1)} mm
+                  </span>
+                  <ParamResetButton
+                    label="l'enfouissement sous-crestal"
+                    onClick={() => onResetParam('subcrestalDepth')}
+                  />
+                </div>
+              </div>
+              <input
+                id="sb-subcrestal-depth"
+                data-testid="sb-subcrestal-slider"
+                type="range"
+                min={0.0}
+                max={3.0}
+                step={0.1}
+                value={params.subcrestalDepth}
+                title="Double-cliquer pour réinitialiser par défaut"
+                onChange={(e) =>
+                  onChangeParams({ subcrestalDepth: parseFloat(e.target.value) })
+                }
+                onDoubleClick={() => onResetParam('subcrestalDepth')}
+                className="cad-slider mt-1 w-full"
+              />
+              <p className="mt-0.5 text-[10px] text-slate-500">
+                Crête osseuse → Col implantaire
+              </p>
+            </div>
+          </div>
+          </div>
+        )}
       </div>
 
-      {/* 3. TIROIR ANATOMIE DU SITE (Moved from right side of 2D Diagram: Mucosa & Subcrestal) */}
+      {/* 3. TIROIR GUIDE CHIRURGICAL & MATÉRIEL (Surgical Guide, Extension, Printing & Sleeve) */}
       {params.mode === 'kit' && (
         <div
           data-testid="sidebar-drawer-3"
-          className={`rounded-lg border overflow-hidden transition-colors ${
-            isHighlighted('gingivaThickness') || isHighlighted('subcrestalDepth')
-              ? 'border-sky-400'
-              : 'border-slate-200'
-          }`}
-        >
-          <button
-            type="button"
-            onClick={() => setAnatomyDrawerOpen((o) => !o)}
-            aria-expanded={anatomyDrawerOpen}
-            data-testid="sidebar-drawer-3-toggle"
-            className="bsp-section-header flex w-full items-center justify-between gap-2 px-3 py-2 text-left transition-colors hover:opacity-95"
-          >
-            <span className="flex items-center gap-1.5 text-xs font-bold min-w-0">
-              {anatomyDrawerOpen ? (
-                <ChevronUp className="h-3.5 w-3.5 shrink-0 opacity-75" aria-hidden="true" />
-              ) : (
-                <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-75" aria-hidden="true" />
-              )}
-              <span className="truncate">3. Anatomie du site</span>
-            </span>
-            <span className="font-mono-tabular shrink-0 rounded border border-slate-300/60 bg-white/70 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
-              {params.gingivaThickness.toFixed(1)} / {params.subcrestalDepth.toFixed(1)} mm
-            </span>
-          </button>
-
-          {anatomyDrawerOpen && (
-            <div className="space-y-2.5 border-t border-slate-200 p-2.5">
-              {/* Épaisseur muqueuse */}
-              <div className={highlightBox('gingivaThickness')}>
-                <div className="flex items-center justify-between text-[11px]">
-                  <label htmlFor="sb-gingiva-thickness" className="font-medium text-slate-700">
-                    <BilingualTerm fr="Épaisseur muqueuse" en="Mucosa Thickness" />
-                  </label>
-                  <div className="flex items-center gap-1">
-                    <span className="font-mono-tabular font-semibold text-rose-700">
-                      {params.gingivaThickness.toFixed(1)} mm
-                    </span>
-                    <ParamResetButton
-                      label="l'épaisseur muqueuse"
-                      onClick={() => onResetParam('gingivaThickness')}
-                    />
-                  </div>
-                </div>
-                <input
-                  id="sb-gingiva-thickness"
-                  data-testid="sb-gingiva-slider"
-                  type="range"
-                  min={0.5}
-                  max={6.0}
-                  step={0.1}
-                  value={params.gingivaThickness}
-                  onChange={(e) =>
-                    onChangeParams({ gingivaThickness: parseFloat(e.target.value) })
-                  }
-                  className="cad-slider mt-1 w-full"
-                />
-                <p className="mt-0.5 text-[10px] text-slate-500">
-                  Crête osseuse → Surface gingivale
-                </p>
-              </div>
-
-              {/* Enfouissement sous-crestal */}
-              <div className={highlightBox('subcrestalDepth')}>
-                <div className="flex items-center justify-between text-[11px]">
-                  <label htmlFor="sb-subcrestal-depth" className="font-medium text-slate-700">
-                    <BilingualTerm fr="Enfouissement sous-crestal" en="Subcrestal Depth" />
-                  </label>
-                  <div className="flex items-center gap-1">
-                    <span className="font-mono-tabular font-semibold text-violet-700">
-                      {params.subcrestalDepth.toFixed(1)} mm
-                    </span>
-                    <ParamResetButton
-                      label="l'enfouissement sous-crestal"
-                      onClick={() => onResetParam('subcrestalDepth')}
-                    />
-                  </div>
-                </div>
-                <input
-                  id="sb-subcrestal-depth"
-                  data-testid="sb-subcrestal-slider"
-                  type="range"
-                  min={0.0}
-                  max={3.0}
-                  step={0.1}
-                  value={params.subcrestalDepth}
-                  onChange={(e) =>
-                    onChangeParams({ subcrestalDepth: parseFloat(e.target.value) })
-                  }
-                  className="cad-slider mt-1 w-full"
-                />
-                <p className="mt-0.5 text-[10px] text-slate-500">
-                  Crête osseuse → Col implantaire
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* 4. TIROIR GUIDE CHIRURGICAL & MATÉRIEL (Surgical Guide, Extension, Printing, Handpiece & Sleeve) */}
-      {params.mode === 'kit' && (
-        <div
-          data-testid="sidebar-drawer-4"
-          className={`rounded-lg border overflow-hidden transition-colors ${
+          className={`shrink-0 rounded-lg border transition-colors ${
             isHighlighted('surgicalGuideOffset') ||
             isHighlighted('guideTubeExtension') ||
             isHighlighted('printingClearance') ||
-            isHighlighted('handpieceHeadHeight') ||
+            isHighlighted('guideHeight') ||
             isHighlighted('sleeve')
               ? 'border-sky-400'
               : 'border-slate-200'
@@ -934,8 +504,10 @@ export function ControlSidebar({
             type="button"
             onClick={() => setHardwareDrawerOpen((o) => !o)}
             aria-expanded={hardwareDrawerOpen}
-            data-testid="sidebar-drawer-4-toggle"
-            className="bsp-section-header flex w-full items-center justify-between gap-2 px-3 py-2 text-left transition-colors hover:opacity-95"
+            data-testid="sidebar-drawer-3-toggle"
+            className={`bsp-section-header flex w-full items-center justify-between gap-2 px-3 py-2 text-left transition-colors hover:opacity-95 ${
+              hardwareDrawerOpen ? 'rounded-t-lg' : 'rounded-lg'
+            }`}
           >
             <span className="flex items-center gap-1.5 text-xs font-bold min-w-0">
               {hardwareDrawerOpen ? (
@@ -944,16 +516,60 @@ export function ControlSidebar({
                 <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-75" aria-hidden="true" />
               )}
               <span className="truncate" title="Guide chirurgical & matériel">
-                4. Guide &amp; matériel
+                3. Guide &amp; matériel
               </span>
             </span>
-            <span className="font-mono-tabular shrink-0 rounded border border-slate-300/60 bg-white/70 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
-              {params.surgicalGuideOffset.toFixed(2)} · CA {params.handpieceHeadHeight.toFixed(1)}
+            <span className="font-mono-tabular shrink-0 whitespace-nowrap rounded border border-slate-300/60 bg-white/70 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">
+              {params.guideHeight.toFixed(1)} · {params.surgicalGuideOffset.toFixed(2)} mm
             </span>
           </button>
 
           {hardwareDrawerOpen && (
             <div className="space-y-2.5 border-t border-slate-200 p-2.5">
+              {/* Integrated Hauteur guidage (Guide Height) */}
+              <div className={highlightBox('guideHeight')}>
+                <div className="flex items-center justify-between text-[11px]">
+                  <label htmlFor="sb-guide-height" className="font-medium text-slate-700">
+                    <BilingualTerm fr="Hauteur guidage" en="Guide Height" />
+                  </label>
+                  <div className="flex items-center gap-1">
+                    {isGuideHeightModified && (
+                      <SaveDefaultIconButton
+                        paramKey="guideHeight"
+                        label="la hauteur de guidage"
+                        onClick={() => onSaveParamDefault(activeKit.id, 'guideHeight')}
+                      />
+                    )}
+                    <span
+                      data-testid="sb-guide-height-value"
+                      className={`font-mono-tabular font-semibold ${
+                        params.guideHeight < 3.0 ? 'text-amber-700' : 'text-sky-700'
+                      }`}
+                    >
+                      {params.guideHeight.toFixed(1)} mm
+                    </span>
+                    <ParamResetButton
+                      label="la hauteur de guidage"
+                      onClick={() => onResetParam('guideHeight')}
+                    />
+                  </div>
+                </div>
+                <input
+                  id="sb-guide-height"
+                  data-testid="sb-guide-height-slider"
+                  type="range"
+                  min={1.5}
+                  max={8.0}
+                  step={0.1}
+                  value={clamp(params.guideHeight, 1.5, 8.0)}
+                  title="Double-cliquer pour réinitialiser par défaut"
+                  onChange={(e) => onChangeParams({ guideHeight: parseFloat(e.target.value) })}
+                  onDoubleClick={() => onResetParam('guideHeight')}
+                  className="cad-slider mt-1 w-full"
+                />
+                <p className="mt-0.5 text-[10px] text-slate-500">Hauteur du puits de guidage</p>
+              </div>
+
               {/* Mastertube quick presets when Biotech Kontact has sleeve active */}
               {activeKit.id === 'factory-biotech-kontact' && params.hasSleeve && (
                 <div className={highlightBox('offsetCao')}>
@@ -992,8 +608,15 @@ export function ControlSidebar({
                       : 'border-slate-200 bg-slate-50/70'
                   }`}
                 >
-                  <div className="text-[11px] font-semibold text-slate-800">
+                  <div className="flex items-center justify-between gap-2 text-[11px] font-semibold text-slate-800">
                     <BilingualTerm fr="Position de la douille" en="Sleeve Seating Position" />
+                    {isSleeveSeatingModified && (
+                      <SaveDefaultIconButton
+                        paramKey="sleeveSeating"
+                        label="la position de la douille"
+                        onClick={() => onSaveParamDefault(activeKit.id, 'sleeveSeating')}
+                      />
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-1 rounded-md bg-slate-200/70 p-0.5">
                     <button
@@ -1025,6 +648,13 @@ export function ControlSidebar({
                       <BilingualTerm fr="Collerette douille" en="Sleeve Lip" />
                     </label>
                     <div className="flex items-center gap-1">
+                      {isSleeveLipModified && (
+                        <SaveDefaultIconButton
+                          paramKey="sleeveLipThickness"
+                          label="la collerette"
+                          onClick={() => onSaveParamDefault(activeKit.id, 'sleeveLipThickness')}
+                        />
+                      )}
                       <span className="font-mono-tabular font-semibold text-slate-900">
                         {params.sleeveLipThickness.toFixed(2)} mm
                       </span>
@@ -1041,9 +671,11 @@ export function ControlSidebar({
                     max={2.0}
                     step={0.05}
                     value={params.sleeveLipThickness}
+                    title="Double-cliquer pour réinitialiser par défaut"
                     onChange={(e) =>
                       onChangeParams({ sleeveLipThickness: parseFloat(e.target.value) })
                     }
+                    onDoubleClick={() => onResetParam('sleeveLipThickness')}
                     className="cad-slider w-full"
                   />
 
@@ -1052,6 +684,13 @@ export function ControlSidebar({
                       <BilingualTerm fr="Paroi cylindre" en="Sleeve Wall" />
                     </label>
                     <div className="flex items-center gap-1">
+                      {isSleeveWallModified && (
+                        <SaveDefaultIconButton
+                          paramKey="sleeveWallThickness"
+                          label="l'épaisseur de paroi"
+                          onClick={() => onSaveParamDefault(activeKit.id, 'sleeveWallThickness')}
+                        />
+                      )}
                       <span className="font-mono-tabular font-semibold text-slate-900">
                         {params.sleeveWallThickness.toFixed(2)} mm
                       </span>
@@ -1068,9 +707,11 @@ export function ControlSidebar({
                     max={1.0}
                     step={0.05}
                     value={params.sleeveWallThickness}
+                    title="Double-cliquer pour réinitialiser par défaut"
                     onChange={(e) =>
                       onChangeParams({ sleeveWallThickness: parseFloat(e.target.value) })
                     }
+                    onDoubleClick={() => onResetParam('sleeveWallThickness')}
                     className="cad-slider w-full"
                   />
 
@@ -1079,6 +720,15 @@ export function ControlSidebar({
                       <BilingualTerm fr="Jeu douille / foret" en="Drill-to-Sleeve Clearance" />
                     </label>
                     <div className="flex items-center gap-1">
+                      {isDrillSleeveClearModified && (
+                        <SaveDefaultIconButton
+                          paramKey="drillToSleeveClearance"
+                          label="le jeu douille/foret"
+                          onClick={() =>
+                            onSaveParamDefault(activeKit.id, 'drillToSleeveClearance')
+                          }
+                        />
+                      )}
                       <span className="font-mono-tabular font-semibold text-slate-900">
                         {params.drillToSleeveClearance.toFixed(2)} mm
                       </span>
@@ -1095,9 +745,11 @@ export function ControlSidebar({
                     max={0.4}
                     step={0.01}
                     value={params.drillToSleeveClearance}
+                    title="Double-cliquer pour réinitialiser par défaut"
                     onChange={(e) =>
                       onChangeParams({ drillToSleeveClearance: parseFloat(e.target.value) })
                     }
+                    onDoubleClick={() => onResetParam('drillToSleeveClearance')}
                     className="cad-slider w-full"
                   />
                 </div>
@@ -1113,6 +765,13 @@ export function ControlSidebar({
                     />
                   </label>
                   <div className="flex items-center gap-1">
+                    {isSurgicalGuideOffsetModified && (
+                      <SaveDefaultIconButton
+                        paramKey="surgicalGuideOffset"
+                        label="le décalage du guide chirurgical"
+                        onClick={() => onSaveParamDefault(activeKit.id, 'surgicalGuideOffset')}
+                      />
+                    )}
                     <span className="font-mono-tabular font-semibold text-slate-900">
                       {params.surgicalGuideOffset.toFixed(2)} mm
                     </span>
@@ -1124,14 +783,17 @@ export function ControlSidebar({
                 </div>
                 <input
                   id="sb-surgical-guide-offset"
+                  data-testid="sb-surgical-guide-offset-slider"
                   type="range"
                   min={0.05}
                   max={0.6}
                   step={0.05}
                   value={params.surgicalGuideOffset}
+                  title="Double-cliquer pour réinitialiser par défaut"
                   onChange={(e) =>
                     onChangeParams({ surgicalGuideOffset: parseFloat(e.target.value) })
                   }
+                  onDoubleClick={() => onResetParam('surgicalGuideOffset')}
                   className="cad-slider mt-1 w-full"
                 />
                 <p className="mt-1 text-[10px] leading-snug text-slate-500">
@@ -1149,10 +811,19 @@ export function ControlSidebar({
                       en="Guide Tube Extension"
                     />
                   </span>
-                  <ParamResetButton
-                    label="l'allongement du tube"
-                    onClick={() => onResetParam('guideTubeExtension')}
-                  />
+                  <div className="flex items-center gap-1">
+                    {isGuideTubeExtensionModified && (
+                      <SaveDefaultIconButton
+                        paramKey="guideTubeExtension"
+                        label="l'allongement du tube"
+                        onClick={() => onSaveParamDefault(activeKit.id, 'guideTubeExtension')}
+                      />
+                    )}
+                    <ParamResetButton
+                      label="l'allongement du tube"
+                      onClick={() => onResetParam('guideTubeExtension')}
+                    />
+                  </div>
                 </div>
                 <div
                   className="grid grid-cols-2 gap-1 rounded-md bg-slate-200/70 p-0.5"
@@ -1198,6 +869,13 @@ export function ControlSidebar({
                     <BilingualTerm fr="Jeu d'impression 3D" en="3D Printing Clearance" />
                   </label>
                   <div className="flex items-center gap-1">
+                    {isPrintingClearanceModified && (
+                      <SaveDefaultIconButton
+                        paramKey="printingClearance"
+                        label="le jeu d'impression 3D"
+                        onClick={() => onSaveParamDefault(activeKit.id, 'printingClearance')}
+                      />
+                    )}
                     <span className="font-mono-tabular font-semibold text-slate-900">
                       {params.printingClearance.toFixed(2)} mm
                     </span>
@@ -1214,11 +892,96 @@ export function ControlSidebar({
                   max={0.4}
                   step={0.01}
                   value={params.printingClearance}
+                  title="Double-cliquer pour réinitialiser par défaut"
                   onChange={(e) =>
                     onChangeParams({ printingClearance: parseFloat(e.target.value) })
                   }
+                  onDoubleClick={() => onResetParam('printingClearance')}
                   className="cad-slider mt-1 w-full"
                 />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 4. TIROIR PARAMÈTRES SUPPLÉMENTAIRES (Mucosa Thickness & Contra-angle Head Height) */}
+      {params.mode === 'kit' && (
+        <div
+          data-testid="sidebar-drawer-4"
+          className={`shrink-0 rounded-lg border transition-colors ${
+            isHighlighted('gingivaThickness') || isHighlighted('handpieceHeadHeight')
+              ? 'border-sky-400'
+              : 'border-slate-200'
+          }`}
+        >
+          <button
+            type="button"
+            onClick={() => setExtraParamsDrawerOpen((o) => !o)}
+            aria-expanded={extraParamsDrawerOpen}
+            data-testid="sidebar-drawer-4-toggle"
+            className={`bsp-section-header flex w-full items-center justify-between gap-1.5 px-2.5 py-2 text-left transition-colors hover:opacity-95 ${
+              extraParamsDrawerOpen ? 'rounded-t-lg' : 'rounded-lg'
+            }`}
+          >
+            <span className="flex items-center gap-1.5 text-[11.5px] font-bold min-w-0">
+              {extraParamsDrawerOpen ? (
+                <ChevronUp className="h-3.5 w-3.5 shrink-0 opacity-75" aria-hidden="true" />
+              ) : (
+                <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-75" aria-hidden="true" />
+              )}
+              <span className="leading-tight" title="Paramètres supplémentaires">
+                4. Paramètres supplémentaires
+              </span>
+            </span>
+            <span className="font-mono-tabular shrink-0 whitespace-nowrap rounded border border-slate-300/60 bg-white/70 px-1 py-0.5 text-[9.5px] font-semibold text-slate-600">
+              {params.gingivaThickness.toFixed(1)} · {params.handpieceHeadHeight.toFixed(1)}
+            </span>
+          </button>
+
+          {extraParamsDrawerOpen && (
+            <div className="space-y-2.5 border-t border-slate-200 p-2.5">
+              {/* Épaisseur muqueuse */}
+              <div className={highlightBox('gingivaThickness')}>
+                <div className="flex items-center justify-between text-[11px]">
+                  <label htmlFor="sb-gingiva-thickness" className="font-medium text-slate-700">
+                    <BilingualTerm fr="Épaisseur muqueuse" en="Mucosa Thickness" />
+                  </label>
+                  <div className="flex items-center gap-1">
+                    {isGingivaModified && (
+                      <SaveDefaultIconButton
+                        paramKey="gingivaThickness"
+                        label="l'épaisseur muqueuse"
+                        onClick={() => onSaveParamDefault(activeKit.id, 'gingivaThickness')}
+                      />
+                    )}
+                    <span className="font-mono-tabular font-semibold text-rose-700">
+                      {params.gingivaThickness.toFixed(1)} mm
+                    </span>
+                    <ParamResetButton
+                      label="l'épaisseur muqueuse"
+                      onClick={() => onResetParam('gingivaThickness')}
+                    />
+                  </div>
+                </div>
+                <input
+                  id="sb-gingiva-thickness"
+                  data-testid="sb-gingiva-slider"
+                  type="range"
+                  min={0.5}
+                  max={6.0}
+                  step={0.1}
+                  value={params.gingivaThickness}
+                  title="Double-cliquer pour réinitialiser par défaut"
+                  onChange={(e) =>
+                    onChangeParams({ gingivaThickness: parseFloat(e.target.value) })
+                  }
+                  onDoubleClick={() => onResetParam('gingivaThickness')}
+                  className="cad-slider mt-1 w-full"
+                />
+                <p className="mt-0.5 text-[10px] text-slate-500">
+                  Crête osseuse → Surface gingivale
+                </p>
               </div>
 
               {/* Contra-angle head height */}
@@ -1231,6 +994,13 @@ export function ControlSidebar({
                     />
                   </label>
                   <div className="flex items-center gap-1">
+                    {isHandpieceModified && (
+                      <SaveDefaultIconButton
+                        paramKey="handpieceHeadHeight"
+                        label="la hauteur de tête du contre-angle"
+                        onClick={() => onSaveParamDefault(activeKit.id, 'handpieceHeadHeight')}
+                      />
+                    )}
                     <span className="font-mono-tabular font-semibold text-slate-900">
                       {params.handpieceHeadHeight.toFixed(1)} mm
                     </span>
@@ -1242,14 +1012,17 @@ export function ControlSidebar({
                 </div>
                 <input
                   id="ca-head-height"
+                  data-testid="sb-handpiece-slider"
                   type="range"
                   min={10.0}
                   max={17.0}
                   step={0.5}
                   value={clamp(params.handpieceHeadHeight, 10.0, 17.0)}
+                  title="Double-cliquer pour réinitialiser par défaut"
                   onChange={(e) =>
                     onChangeParams({ handpieceHeadHeight: parseFloat(e.target.value) })
                   }
+                  onDoubleClick={() => onResetParam('handpieceHeadHeight')}
                   className="cad-slider mt-1 w-full"
                 />
               </div>

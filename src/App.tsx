@@ -1,12 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  ArrowLeft,
-  ArrowRight,
   ChevronDown,
   Info,
   Moon,
   Printer,
-  SlidersHorizontal,
   Sun,
   X,
 } from 'lucide-react';
@@ -24,33 +21,46 @@ import {
   DEFAULT_VISIBILITY_FILTERS,
   DiagramElementFocus,
   DrillingKit,
+  DrillingSystemsLayout,
   KitParameterSnapshot,
   ResettableParamKey,
   SimulationParams,
   VisibilityFilters,
+  buildSingleParamSnapshotUpdate,
   computeImplantGeometry,
   getDefaultParamPatch,
+  groupDrillingKitsBySystem,
+  isMisMguideKitId,
   loadCustomImplantSystemsFromStorage,
   loadDrillingKitsFromStorage,
+  loadDrillingSystemsLayoutFromStorage,
   paramsPatchFromSnapshot,
   pickOptimalGuidedOffset,
   pickOptimalPilotLength,
   roundTo,
   saveCustomImplantSystemsToStorage,
   saveDrillingKitsToStorage,
+  saveDrillingSystemsLayoutToStorage,
   snapshotFromParams,
 } from './utils/implantGeometry';
 
 export default function App() {
-  const [showOnboarding, setShowOnboarding] = useState(true);
+  const [showOnboarding, setShowOnboarding] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    return new URLSearchParams(window.location.search).get('autostart') !== '1';
+  });
   const [disclaimerOpen, setDisclaimerOpen] = useState(false);
   const [editingKitId, setEditingKitId] = useState<string | null>(null);
+  const [caliperReturnToOnboarding, setCaliperReturnToOnboarding] = useState(false);
   const [bspTheme, setBspTheme] = useState<'dark' | 'light'>(() => {
     if (typeof window === 'undefined') return 'dark';
     const saved = window.localStorage.getItem('orthoguide_bsp_theme_v1');
     return saved === 'light' ? 'light' : 'dark';
   });
   const [kits, setKits] = useState<DrillingKit[]>(() => loadDrillingKitsFromStorage());
+  const [drillingLayout, setDrillingLayout] = useState<DrillingSystemsLayout | null>(() =>
+    loadDrillingSystemsLayoutFromStorage(),
+  );
   const [customImplants, setCustomImplants] = useState<CustomImplantSystem[]>(() =>
     loadCustomImplantSystemsFromStorage(),
   );
@@ -87,6 +97,10 @@ export default function App() {
   }, [kits]);
 
   useEffect(() => {
+    saveDrillingSystemsLayoutToStorage(drillingLayout);
+  }, [drillingLayout]);
+
+  useEffect(() => {
     saveCustomImplantSystemsToStorage(customImplants);
   }, [customImplants]);
 
@@ -117,12 +131,14 @@ export default function App() {
           : m,
       ),
     );
-    const nextBrand: 'kontact' | 'globald' | 'custom' =
+    const nextBrand: 'kontact' | 'globald' | 'mis' | 'custom' =
       model.id === 'factory-implant-biotech-kontact'
         ? 'kontact'
         : model.id === 'factory-implant-globald-inkone'
           ? 'globald'
-          : 'custom';
+          : model.id === 'factory-implant-mis-mguide'
+            ? 'mis'
+            : 'custom';
     const nextDiameter =
       overrides?.implantDiameter ??
       (model.diametersMm.some((d) => Math.abs(d - params.implantDiameter) < 0.05)
@@ -200,27 +216,29 @@ export default function App() {
       );
     }
     setParams((prev) => {
-      const nextImplantBrand =
+      const nextImplantBrand: 'kontact' | 'globald' | 'mis' | 'custom' =
         target.kind === 'pilot'
           ? prev.implantBrand
           : target.id === 'factory-biotech-kontact'
             ? 'kontact'
-            : 'custom';
+            : isMisMguideKitId(target.id)
+              ? 'mis'
+              : 'custom';
       const nextCustomImplantId =
         target.kind === 'pilot'
           ? prev.customImplantId
           : target.id === 'factory-biotech-kontact'
             ? 'factory-implant-biotech-kontact'
-            : prev.customImplantId;
+            : isMisMguideKitId(target.id)
+              ? 'factory-implant-mis-mguide'
+              : prev.customImplantId;
       const nextImplantDiameter =
-        nextImplantBrand === 'custom' &&
-        !target.isFactory &&
+        target.kind === 'guided' &&
         !target.userDefaults.implantDiametersMm.some((d) => Math.abs(d - prev.implantDiameter) < 0.05)
           ? (target.userDefaults.implantDiametersMm[0] ?? prev.implantDiameter)
           : prev.implantDiameter;
       const nextImplantLength =
-        nextImplantBrand === 'custom' &&
-        !target.isFactory &&
+        target.kind === 'guided' &&
         !target.userDefaults.implantLengthsMm.some((l) => Math.abs(l - prev.implantLength) < 0.05)
           ? (target.userDefaults.implantLengthsMm[0] ?? prev.implantLength)
           : prev.implantLength;
@@ -241,6 +259,7 @@ export default function App() {
           subcrestalDepth: prev.subcrestalDepth,
           gingivaThickness: prev.gingivaThickness,
           calibrationOffsetMm: target.factoryDefaults.offsetMm,
+          kitId: target.id,
         }),
       };
     });
@@ -268,7 +287,9 @@ export default function App() {
       offsetMm: nextOptimalOffset,
       hasSleeve,
       sleeveLipThicknessMm:
-        hasSleeve && target.userDefaults.sleeveLipThicknessMm <= 0
+        hasSleeve &&
+        target.userDefaults.sleeveSeating === 'above' &&
+        target.userDefaults.sleeveLipThicknessMm <= 0
           ? 0.5
           : target.userDefaults.sleeveLipThicknessMm,
       sleeveWallThicknessMm:
@@ -297,28 +318,53 @@ export default function App() {
     );
 
     setParams((prev) => {
-      const nextImplantBrand =
+      const nextImplantBrand: 'kontact' | 'globald' | 'mis' | 'custom' =
         target.id === 'factory-biotech-kontact'
           ? 'kontact'
-          : target.id === 'factory-globald-pilot'
-            ? 'globald'
-            : 'custom';
+          : isMisMguideKitId(target.id)
+            ? 'mis'
+            : target.id === 'factory-globald-pilot'
+              ? 'globald'
+              : 'custom';
+      const nextCustomImplantId =
+        target.id === 'factory-biotech-kontact'
+          ? 'factory-implant-biotech-kontact'
+          : isMisMguideKitId(target.id)
+            ? 'factory-implant-mis-mguide'
+            : target.id === 'factory-globald-pilot'
+              ? 'factory-implant-globald-inkone'
+              : prev.customImplantId;
+      const nextImplantDiameter =
+        target.kind === 'guided' &&
+        !target.userDefaults.implantDiametersMm.some((d) => Math.abs(d - prev.implantDiameter) < 0.05)
+          ? (target.userDefaults.implantDiametersMm[0] ?? prev.implantDiameter)
+          : prev.implantDiameter;
+      const nextImplantLength =
+        target.kind === 'guided' &&
+        !target.userDefaults.implantLengthsMm.some((l) => Math.abs(l - prev.implantLength) < 0.05)
+          ? (target.userDefaults.implantLengthsMm[0] ?? prev.implantLength)
+          : prev.implantLength;
       return {
         ...prev,
         mode: 'kit',
         activeKitId: target.id,
         implantBrand: nextImplantBrand,
+        customImplantId: nextCustomImplantId,
         customImplantName: nextImplantBrand === 'custom' ? target.name : undefined,
-        ...paramsPatchFromSnapshot(updatedSnapshot, prev.implantLength, target.kind, {
+        implantDiameter: nextImplantDiameter,
+        implantLength: nextImplantLength,
+        ...paramsPatchFromSnapshot(updatedSnapshot, nextImplantLength, target.kind, {
           subcrestalDepth: prev.subcrestalDepth,
           gingivaThickness: prev.gingivaThickness,
           calibrationOffsetMm: target.factoryDefaults.offsetMm,
+          kitId: target.id,
         }),
       };
     });
   };
 
   const handleOpenCaliperAssistant = () => {
+    setCaliperReturnToOnboarding(false);
     setShowOnboarding(false);
     setEditingKitId(null);
     setHighlightedElement(null);
@@ -329,6 +375,7 @@ export default function App() {
   };
 
   const handleLaunchCaliperFromOnboarding = () => {
+    setCaliperReturnToOnboarding(true);
     setShowOnboarding(false);
     setEditingKitId(null);
     setHighlightedElement(null);
@@ -342,6 +389,7 @@ export default function App() {
     const target = kits.find((k) => k.id === kitId);
     if (!target) return;
     const def = target.userDefaults;
+    setCaliperReturnToOnboarding(showOnboarding);
     setEditingKitId(target.id);
     setShowOnboarding(false);
     setHighlightedElement(null);
@@ -422,6 +470,38 @@ export default function App() {
         return {
           ...k,
           userDefaults: nextSnapshot,
+          history: [historyEntry, ...k.history].slice(0, 12),
+        };
+      }),
+    );
+  };
+
+  const handleSaveParamDefault = (kitId: string, paramKey: ResettableParamKey | 'sleeveSeating') => {
+    const target = kits.find((k) => k.id === kitId);
+    if (!target) return;
+    const nowIso = new Date().toISOString();
+    const formattedTime = new Date(nowIso).toLocaleTimeString('fr-FR', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    setKits((prev) =>
+      prev.map((k) => {
+        if (k.id !== kitId) return k;
+        const previousSnapshot = { ...k.userDefaults };
+        const updatedSnapshot: KitParameterSnapshot =
+          paramKey === 'sleeveSeating'
+            ? { ...k.userDefaults, sleeveSeating: params.sleeveSeating }
+            : buildSingleParamSnapshotUpdate(paramKey, params, geometry.offsetCao, k.userDefaults);
+        const historyEntry = {
+          id: `hist-${Date.now()}`,
+          savedAt: nowIso,
+          label: `Réglage précédent (${formattedTime})`,
+          snapshot: previousSnapshot,
+        };
+        return {
+          ...k,
+          userDefaults: updatedSnapshot,
           history: [historyEntry, ...k.history].slice(0, 12),
         };
       }),
@@ -513,7 +593,7 @@ export default function App() {
         ? [...params.wizardAvailableLengths].sort((a, b) => a - b)
         : params.wizardKind === 'pilot'
           ? [17.3, 19.0, 20.5, 22.0, 23.5, 25.5]
-          : [8.0, 10.0, 12.0];
+          : [6.0, 8.0, 10.0, 12.0, 14.0, 16.0];
     const drillDias =
       params.wizardDrillDiameters.length > 0
         ? [...params.wizardDrillDiameters].sort((a, b) => a - b)
@@ -527,7 +607,7 @@ export default function App() {
     const implantLens =
       params.wizardImplantLengths.length > 0
         ? [...params.wizardImplantLengths].sort((a, b) => a - b)
-        : [8.0, 10.0, 12.0];
+        : [6.0, 8.0, 10.0, 12.0, 14.0, 16.0];
 
     const snapshot: KitParameterSnapshot = {
       offsetMm: roundTo(params.wizardDefaultOffset, 2),
@@ -592,13 +672,16 @@ export default function App() {
       );
 
       setEditingKitId(null);
+      setCaliperReturnToOnboarding(false);
       setParams((prev) => {
-        const nextBrand =
+        const nextBrand: 'kontact' | 'globald' | 'mis' | 'custom' =
           existingTarget.id === 'factory-biotech-kontact'
             ? 'kontact'
-            : existingTarget.id === 'factory-globald-pilot'
-              ? 'globald'
-              : 'custom';
+            : isMisMguideKitId(existingTarget.id)
+              ? 'mis'
+              : existingTarget.id === 'factory-globald-pilot'
+                ? 'globald'
+                : 'custom';
         const compatibleDia = implantDias.some((d) => Math.abs(d - prev.implantDiameter) < 0.05)
           ? prev.implantDiameter
           : firstImplantDia;
@@ -618,6 +701,7 @@ export default function App() {
             calibrationOffsetMm: existingTarget.isFactory
               ? existingTarget.factoryDefaults.offsetMm
               : snapshot.offsetMm,
+            kitId: existingTarget.id,
           }),
         };
       });
@@ -638,7 +722,24 @@ export default function App() {
     };
 
     setKits((prev) => [...prev, newKit]);
+    setDrillingLayout((prev) => {
+      if (!prev) {
+        const defaultAlphaIds = groupDrillingKitsBySystem(kits).map((g) => g.groupId);
+        return {
+          mainGroupIds: [...defaultAlphaIds.slice(0, 3), newKit.id],
+          libraryGroupIds: defaultAlphaIds.slice(3),
+        };
+      }
+      if (prev.mainGroupIds.includes(newKit.id) || prev.libraryGroupIds.includes(newKit.id)) {
+        return prev;
+      }
+      return {
+        ...prev,
+        mainGroupIds: [...prev.mainGroupIds, newKit.id],
+      };
+    });
     setEditingKitId(null);
+    setCaliperReturnToOnboarding(false);
     setParams((prev) => ({
       ...prev,
       mode: 'kit',
@@ -704,6 +805,7 @@ export default function App() {
             onClick={() => {
               setShowOnboarding(true);
               setEditingKitId(null);
+              setCaliperReturnToOnboarding(false);
               handleChangeParams({ mode: 'kit' });
             }}
             data-testid="bluetube-logo-btn"
@@ -713,69 +815,71 @@ export default function App() {
             BlueTube
           </button>
 
-          {/* Right: Primary Controls (Theme + Print) stacked cleanly above Mode avancé / Mode assisté */}
-          <div className="justify-self-end flex flex-col items-end gap-1.5 shrink-0">
-            <div className="flex items-center gap-1.5 sm:gap-2">
-              {/* Blue Sky Plan Light / Dark Menu Toggle */}
-              <div
-                role="group"
-                aria-label="Thème Blue Sky Plan"
-                className="inline-flex h-8 items-center rounded-lg border border-slate-300/80 bg-slate-100 p-0.5 text-xs font-semibold tracking-tight"
-              >
-                <button
-                  type="button"
-                  onClick={() => setBspTheme('light')}
-                  data-testid="theme-light-btn"
-                  aria-label="Thème Clair"
-                  className={`inline-flex h-7 items-center gap-1.5 rounded-md px-2 sm:px-2.5 whitespace-nowrap transition-colors ${
-                    bspTheme === 'light'
-                      ? 'bg-white text-slate-900 shadow-xs'
-                      : 'text-slate-500 hover:text-slate-900'
-                  }`}
-                >
-                  <Sun className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                  <span className="hidden sm:inline">Clair</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setBspTheme('dark')}
-                  data-testid="theme-dark-btn"
-                  aria-label="Thème Foncé"
-                  className={`inline-flex h-7 items-center gap-1.5 rounded-md px-2 sm:px-2.5 whitespace-nowrap transition-colors ${
-                    bspTheme === 'dark'
-                      ? 'bg-sky-600 text-white shadow-xs'
-                      : 'text-slate-500 hover:text-slate-900'
-                  }`}
-                >
-                  <Moon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                  <span className="hidden sm:inline">Foncé</span>
-                </button>
-              </div>
-
+          {/* Right: Horizontally Centered Row — Theme (Sun/Moon pinched), Print (Icon only), Mode avancé/assisté */}
+          <div className="justify-self-end flex items-center gap-1.5 sm:gap-2 shrink-0">
+            {/* Compact Rounded Light / Dark Toggle (symbols only, pinched together, minimal footprint) */}
+            <div
+              role="group"
+              aria-label="Thème Blue Sky Plan"
+              className="inline-flex h-8 items-center rounded-full border border-slate-300 bg-slate-100 p-0.5 shrink-0"
+            >
               <button
                 type="button"
-                onClick={() => window.print()}
-                aria-label="Imprimer fiche"
-                title="Imprimer fiche"
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-sky-600 px-2.5 sm:px-3 text-xs font-semibold tracking-tight text-white shadow-xs whitespace-nowrap shrink-0 transition-colors hover:bg-sky-700"
+                onClick={() => setBspTheme('light')}
+                data-testid="theme-light-btn"
+                aria-label="Thème Clair"
+                aria-pressed={bspTheme === 'light'}
+                title="Thème Clair"
+                className={`inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors ${
+                  bspTheme === 'light'
+                    ? 'bg-white text-amber-500 shadow-xs'
+                    : 'text-slate-400 hover:text-slate-700'
+                }`}
               >
-                <Printer className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                <span className="hidden sm:inline">Imprimer fiche</span>
+                <Sun className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setBspTheme('dark')}
+                data-testid="theme-dark-btn"
+                aria-label="Thème Foncé"
+                aria-pressed={bspTheme === 'dark'}
+                title="Thème Foncé"
+                className={`inline-flex h-7 w-7 -ml-0.5 items-center justify-center rounded-full transition-colors ${
+                  bspTheme === 'dark'
+                    ? 'bg-sky-600 text-white shadow-xs'
+                    : 'text-slate-400 hover:text-slate-700'
+                }`}
+              >
+                <Moon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               </button>
             </div>
 
-            {/* Secondary Mode Switch directly below Theme & Print buttons */}
+            {/* Print Sheet Button (Printer icon only, matching form-factor) */}
+            <button
+              type="button"
+              onClick={() => window.print()}
+              data-testid="print-sheet-btn"
+              aria-label="Imprimer fiche"
+              title="Imprimer fiche"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-300 bg-slate-100 text-slate-700 shrink-0 transition-colors hover:border-sky-400 hover:text-sky-600"
+            >
+              <Printer className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            </button>
+
+            {/* Mode avancé / Mode assisté Button (no icon/arrow, exact same technical style as Disclaimer) */}
             {showOnboarding ? (
               <button
                 type="button"
-                onClick={() => setShowOnboarding(false)}
+                onClick={() => {
+                  setCaliperReturnToOnboarding(false);
+                  setShowOnboarding(false);
+                }}
                 data-testid="skip-onboarding-btn"
                 title="Accéder directement à l'interface complète du simulateur"
-                className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-sky-300 bg-sky-50/70 px-2.5 sm:px-3 text-[11px] font-semibold tracking-tight text-sky-700 transition-colors hover:border-sky-500 hover:bg-sky-100 whitespace-nowrap"
+                className="disclaimer-luminous-btn inline-flex h-8 items-center justify-center rounded-lg px-2.5 sm:px-3 text-xs font-semibold tracking-tight bsp-text whitespace-nowrap shrink-0"
               >
-                <SlidersHorizontal className="h-3 w-3 shrink-0" aria-hidden="true" />
                 <span>Mode avancé</span>
-                <ArrowRight className="h-3 w-3 shrink-0" aria-hidden="true" />
               </button>
             ) : (
               <button
@@ -783,13 +887,13 @@ export default function App() {
                 onClick={() => {
                   setShowOnboarding(true);
                   setEditingKitId(null);
+                  setCaliperReturnToOnboarding(false);
                   handleChangeParams({ mode: 'kit' });
                 }}
                 data-testid="back-to-assisted-btn"
                 title="Revenir au Mode assisté étape par étape"
-                className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 sm:px-3 text-[11px] font-semibold tracking-tight text-slate-700 transition-colors hover:border-sky-400 hover:text-sky-700 whitespace-nowrap"
+                className="disclaimer-luminous-btn inline-flex h-8 items-center justify-center rounded-lg px-2.5 sm:px-3 text-xs font-semibold tracking-tight bsp-text whitespace-nowrap shrink-0"
               >
-                <ArrowLeft className="h-3 w-3 shrink-0" aria-hidden="true" />
                 <span>Mode assisté</span>
               </button>
             )}
@@ -872,6 +976,7 @@ export default function App() {
           <OnboardingFlow
             params={params}
             kits={kits}
+            drillingLayout={drillingLayout}
             customImplants={customImplants}
             onChangeParams={handleSelectImplant}
             onSelectImplantModel={handleSelectImplantModel}
@@ -879,6 +984,7 @@ export default function App() {
             onOpenFreeImplantWizard={() => setShowFreeImplantWizard(true)}
             onSelectKit={handleSelectKit}
             onSelectKitSleeve={handleSelectKitSleeve}
+            onChangeDrillingLayout={setDrillingLayout}
             onEditKit={handleEditKit}
             onCompleteToSimulator={() => setShowOnboarding(false)}
             onLaunchCaliperWizard={handleLaunchCaliperFromOnboarding}
@@ -900,6 +1006,10 @@ export default function App() {
               onCancel={() => {
                 setEditingKitId(null);
                 handleChangeParams({ mode: 'kit' });
+                if (caliperReturnToOnboarding) {
+                  setShowOnboarding(true);
+                  setCaliperReturnToOnboarding(false);
+                }
               }}
             />
           </div>
@@ -910,6 +1020,7 @@ export default function App() {
               params={params}
               geometry={geometry}
               kits={kits}
+              drillingLayout={drillingLayout}
               customImplants={customImplants}
               highlightedElement={highlightedElement}
               onSelectImplant={handleSelectImplant}
@@ -918,11 +1029,13 @@ export default function App() {
               onOpenFreeImplantWizard={() => setShowFreeImplantWizard(true)}
               onSelectKit={handleSelectKit}
               onSelectKitSleeve={handleSelectKitSleeve}
+              onChangeDrillingLayout={setDrillingLayout}
               onEditKit={handleEditKit}
               onOpenCaliperAssistant={handleOpenCaliperAssistant}
               onChangeParams={handleChangeParams}
               onResetParam={handleResetParam}
               onSetKitAsDefault={handleSetKitAsDefault}
+              onSaveParamDefault={handleSaveParamDefault}
               onRestoreKitHistory={handleRestoreKitHistory}
               onResetKitToFactory={handleResetKitToFactory}
               onDeleteKit={handleDeleteKit}
@@ -930,25 +1043,25 @@ export default function App() {
             />
 
             <div className="min-w-0 space-y-3">
-              {/* TOP ROW: 2D Scale Cross-Section (Left/Center) + Blue Sky Plan "Tube de guidage de logiciel" Panel (Right) */}
-              <div className="grid grid-cols-1 items-start gap-3 xl:grid-cols-[minmax(0,1fr)_292px]">
-                <SurgicalDiagram2D
-                  params={params}
-                  geometry={geometry}
-                  filters={filters}
-                  highlightedElement={highlightedElement}
-                  onSelectElement={setHighlightedElement}
-                  onChangeParams={handleChangeParams}
-                  onResetParam={handleResetParam}
-                  onToggleFilter={handleToggleFilter}
-                />
-                <BlueSkyTubePanel
-                  geometry={geometry}
-                  theme={bspTheme}
-                  highlightedElement={highlightedElement}
-                  onResetTubeParams={handleResetTubeParams}
-                />
-              </div>
+              {/* TOP ROW: Coupe 2D à l'échelle with Blue Sky Plan "Tube de guidage de logiciel" integrated inside on the right */}
+              <SurgicalDiagram2D
+                params={params}
+                geometry={geometry}
+                filters={filters}
+                highlightedElement={highlightedElement}
+                onSelectElement={setHighlightedElement}
+                onChangeParams={handleChangeParams}
+                onResetParam={handleResetParam}
+                onToggleFilter={handleToggleFilter}
+                tubePanel={
+                  <BlueSkyTubePanel
+                    geometry={geometry}
+                    theme={bspTheme}
+                    highlightedElement={highlightedElement}
+                    onResetTubeParams={handleResetTubeParams}
+                  />
+                }
+              />
 
               {/* BOTTOM ROW (FULL WIDTH): Clinical Telemetry Drawer */}
               <ClinicalTelemetryBar
